@@ -55,7 +55,10 @@ Phase 1 (headless skeleton) is complete and green. The workspace contains:
   (e.g. 0xF1), and **all cycle timing** (blocked on the cycle-unit question).
 - `core-ws`: cartridge ownership boundary + I/O register map (doc-cited
   addresses) + a fully unit-tested interrupt-controller model (8 lines,
-  edge-vs-level semantics, bit-priority selection, relocatable vector base).
+  edge-vs-level semantics, bit-priority selection, relocatable vector base) +
+  a minimal `Machine` (CPU + bus + interrupt controller) that delivers hardware
+  IRQs before each step. Its memory map is a **placeholder flat 1 MiB** — the
+  real WonderSwan map (RAM sizing, ROM/SRAM banking, full I/O) is future work.
 - `ws-testkit`: deterministic synthetic core, capture sink, stable FNV-64 hashes.
 - `ws-cli`: headless synthetic run + `--rom` inspector (no ROM bytes logged).
 
@@ -114,9 +117,9 @@ Verified on Windows x86-64 with Rust/Cargo 1.96.0 on 2026-07-13:
 
 - `cargo fmt --all -- --check` — pass.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — pass.
-- `cargo test --workspace --all-targets --all-features` — 108 passed, 0 failed
-  (cpu-v30mz 85, core-ws 9, format-ws 6, ws-testkit 5, ws-contracts 3, ws-cli 0).
-- `cargo test --release --workspace` — 108 passed, 0 failed.
+- `cargo test --workspace --all-targets --all-features` — 111 passed, 0 failed
+  (cpu-v30mz 85, core-ws 12, format-ws 6, ws-testkit 5, ws-contracts 3, ws-cli 0).
+- `cargo test --release --workspace` — 111 passed, 0 failed.
 - `cargo run --release -p ws-cli` — synthetic baseline:
   - final tick: `30`
   - video: `3` frames, hash `2d1f1e3d37030229`
@@ -128,15 +131,17 @@ Verified on Windows x86-64 with Rust/Cargo 1.96.0 on 2026-07-13:
 See `ROADMAP.md` for the full phase plan and exit gates. Immediate Phase 0/2
 work:
 
-1. Build the headless test-ROM runner in `ws-testkit` and acquire WSCpuTest
-   (auto-runs on boot); run it against `cpu-v30mz` and fix divergences. This is
-   the first real accuracy signal — it validates the GRP2 count-mask choice, the
-   MUL/DIV undefined-flag choices, and the flag semantics broadly.
-2. Give `core-ws` a machine that owns a `Cpu` + RAM/ROM + the interrupt
-   controller, and delivers hardware IRQs (consult `pending_enabled()` gated by
-   the CPU `IF`, call `Cpu::service_interrupt`) before each step.
+1. **Get the first real accuracy signal.** All CPU tests so far are hand-written
+   assumptions. Acquire an oracle (operator-supplied): the **V20 single-step
+   tests** (JSON per-instruction, no WS toolchain — recommended first) or
+   **WSCpuTest** (WS-specific, needs the wf-toolchain + more machine to boot).
+   Build the runner in `ws-testkit` and fix divergences — this validates the
+   GRP2 count-mask choice, the MUL/DIV undefined-flag choices, and flags broadly.
+2. Replace the placeholder flat bus with the real WonderSwan memory map in
+   `core-ws` (RAM sizing per model, ROM/SRAM banking, the full I/O register file)
+   — from verified WSMan details.
 3. Resolve the cycle-unit ambiguity (LFSR/DMA measurement) and only then add
-   per-instruction timing.
+   per-instruction timing. (Machine + hardware-IRQ delivery: done.)
 2. Add the interrupt-delivery sequence and wire `core-ws::InterruptController`
    to the CPU (IVT at `REG_INT_BASE`, push flags/CS/IP, clear IF/TF).
 3. Acquire the hardware test ROMs into gitignored `fixtures/` (`docs/TEST_ROMS.md`)

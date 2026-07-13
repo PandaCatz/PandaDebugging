@@ -15,7 +15,7 @@ test ROM or a reference-emulator oracle diff, never by "it looks right."
 **Current focus:** Phase 2 — the NEC V30MZ opcode decoder/executor.
 
 Verified on Rust/Cargo 1.96.0 (Windows x86-64): `cargo fmt --check`,
-`cargo clippy --all-targets -- -D warnings`, and **108 tests** all pass in debug
+`cargo clippy --all-targets -- -D warnings`, and **111 tests** all pass in debug
 and release. No `unsafe`; warnings are errors.
 
 | Phase | What | Status |
@@ -45,7 +45,7 @@ verified evidence are in [`CLAUDE.md`](CLAUDE.md).
 | `ws-contracts` | Deterministic API: integer emulated time, typed video/audio/input packets, the `Core`/`OutputSink` traits, non-panicking errors. | ✅ |
 | `format-ws` | Defensive, borrowed parser for `.ws` / `.wsc` cartridge images. Bytes in, validated view out. | ✅ structural (header fields deferred) |
 | `cpu-v30mz` | NEC V30MZ core. Registers, flags, addressing, reset, `CpuBus`, ModR/M decode, ALU, and a `step()` executor running the documented instruction set. | 🔨 instruction set complete; hardware-IRQ wiring and cycle timing pending |
-| `core-ws` | The WonderSwan machine core. Cartridge boundary, I/O map, unit-tested interrupt-controller model. | 🔨 boundary + interrupt model |
+| `core-ws` | The WonderSwan machine core. Cartridge boundary, I/O map, interrupt controller, and a minimal machine wiring the CPU + memory + IRQ delivery. | 🔨 machine runs; real memory map / PPU / APU / DMA pending |
 | `ws-testkit` | Deterministic synthetic core + capture sink + stable hashing. Home of the hardware-test-ROM runner (arrives with the CPU). | ✅ synthetic path |
 | `ws-cli` | Headless runner and ROM inspector. | ✅ |
 
