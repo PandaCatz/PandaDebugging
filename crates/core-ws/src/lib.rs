@@ -16,11 +16,13 @@
 //! banking, full I/O), the PPU, the APU, and the DMA engines. This crate is not
 //! a complete WonderSwan core.
 
+pub mod apu;
 pub mod cartridge;
 pub mod interrupt;
 pub mod io;
 pub mod machine;
 
+pub use apu::{NoiseChannel, NoiseLfsr};
 pub use cartridge::{CartridgeError, WsCartridge};
 pub use interrupt::{InterruptController, Irq, Trigger};
 pub use machine::{Bus, Machine};
