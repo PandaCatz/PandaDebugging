@@ -53,7 +53,114 @@ impl Cpu {
         }
 
         match opcode {
-            0x90 => {} // NOP (XCHG AX,AX)
+            // ---- MOV, register / memory ----
+            0x88 => {
+                let m = self.decode_modrm(bus, seg);
+                let v = self.regs.reg8(m.reg);
+                self.write_rm8(bus, m.rm, v);
+            }
+            0x89 => {
+                let m = self.decode_modrm(bus, seg);
+                let v = self.regs.reg16(m.reg);
+                self.write_rm16(bus, m.rm, v);
+            }
+            0x8A => {
+                let m = self.decode_modrm(bus, seg);
+                let v = self.read_rm8(bus, m.rm);
+                self.regs.set_reg8(m.reg, v);
+            }
+            0x8B => {
+                let m = self.decode_modrm(bus, seg);
+                let v = self.read_rm16(bus, m.rm);
+                self.regs.set_reg16(m.reg, v);
+            }
+            0x8C => {
+                // MOV Ew, Sw
+                let m = self.decode_modrm(bus, seg);
+                let v = self.regs.seg(m.reg & 3);
+                self.write_rm16(bus, m.rm, v);
+            }
+            0x8E => {
+                // MOV Sw, Ew
+                let m = self.decode_modrm(bus, seg);
+                let v = self.read_rm16(bus, m.rm);
+                self.regs.set_seg(m.reg & 3, v);
+            }
+            0x8D => {
+                // LEA Gv, M — load the effective offset (register form is undefined)
+                let m = self.decode_modrm(bus, seg);
+                if let Rm::Memory { offset, .. } = m.rm {
+                    self.regs.set_reg16(m.reg, offset);
+                }
+            }
+            0xC6 => {
+                let m = self.decode_modrm(bus, seg);
+                let imm = self.fetch_u8(bus);
+                self.write_rm8(bus, m.rm, imm);
+            }
+            0xC7 => {
+                let m = self.decode_modrm(bus, seg);
+                let imm = self.fetch_u16(bus);
+                self.write_rm16(bus, m.rm, imm);
+            }
+            // ---- MOV, accumulator <-> direct memory offset ----
+            0xA0 => {
+                let off = self.fetch_u16(bus);
+                let s = seg.unwrap_or(self.regs.ds);
+                let v = bus.read_u8(physical_address(s, off));
+                self.regs.set_al(v);
+            }
+            0xA1 => {
+                let off = self.fetch_u16(bus);
+                let s = seg.unwrap_or(self.regs.ds);
+                let v = self.read_mem16(bus, s, off);
+                self.regs.ax = v;
+            }
+            0xA2 => {
+                let off = self.fetch_u16(bus);
+                let s = seg.unwrap_or(self.regs.ds);
+                let al = self.regs.al();
+                bus.write_u8(physical_address(s, off), al);
+            }
+            0xA3 => {
+                let off = self.fetch_u16(bus);
+                let s = seg.unwrap_or(self.regs.ds);
+                let ax = self.regs.ax;
+                self.write_mem16(bus, s, off, ax);
+            }
+            // ---- MOV reg, immediate ----
+            0xB0..=0xB7 => {
+                let imm = self.fetch_u8(bus);
+                self.regs.set_reg8(opcode & 7, imm);
+            }
+            0xB8..=0xBF => {
+                let imm = self.fetch_u16(bus);
+                self.regs.set_reg16(opcode & 7, imm);
+            }
+            // ---- XCHG ----
+            0x86 => {
+                let m = self.decode_modrm(bus, seg);
+                let a = self.read_rm8(bus, m.rm);
+                let b = self.regs.reg8(m.reg);
+                self.write_rm8(bus, m.rm, b);
+                self.regs.set_reg8(m.reg, a);
+            }
+            0x87 => {
+                let m = self.decode_modrm(bus, seg);
+                let a = self.read_rm16(bus, m.rm);
+                let b = self.regs.reg16(m.reg);
+                self.write_rm16(bus, m.rm, b);
+                self.regs.set_reg16(m.reg, a);
+            }
+            0x90..=0x97 => {
+                // XCHG AX, r16  (0x90 = XCHG AX,AX = NOP)
+                let i = opcode & 7;
+                let ax = self.regs.ax;
+                let r = self.regs.reg16(i);
+                self.regs.ax = r;
+                self.regs.set_reg16(i, ax);
+            }
+            // ---- flags / control ----
             0xF4 => {
                 self.halted = true;
                 return Step::Halted;
@@ -180,14 +287,9 @@ impl Cpu {
     fn read_rm16(&mut self, bus: &mut dyn CpuBus, rm: Rm) -> u16 {
         match rm {
             Rm::Register(index) => self.regs.reg16(index),
-            // Word memory access wraps the offset within the segment.
             Rm::Memory {
                 segment, offset, ..
-            } => {
-                let lo = bus.read_u8(physical_address(segment, offset));
-                let hi = bus.read_u8(physical_address(segment, offset.wrapping_add(1)));
-                u16::from_le_bytes([lo, hi])
-            }
+            } => self.read_mem16(bus, segment, offset),
         }
     }
 
@@ -196,12 +298,23 @@ impl Cpu {
             Rm::Register(index) => self.regs.set_reg16(index, value),
             Rm::Memory {
                 segment, offset, ..
-            } => {
-                let [lo, hi] = value.to_le_bytes();
-                bus.write_u8(physical_address(segment, offset), lo);
-                bus.write_u8(physical_address(segment, offset.wrapping_add(1)), hi);
-            }
+            } => self.write_mem16(bus, segment, offset, value),
         }
+    }
+
+    /// Read a little-endian word at `segment:offset`, wrapping the offset within
+    /// the 16-bit segment.
+    fn read_mem16(&mut self, bus: &mut dyn CpuBus, segment: u16, offset: u16) -> u16 {
+        let lo = bus.read_u8(physical_address(segment, offset));
+        let hi = bus.read_u8(physical_address(segment, offset.wrapping_add(1)));
+        u16::from_le_bytes([lo, hi])
+    }
+
+    /// Write a little-endian word at `segment:offset`, wrapping the offset.
+    fn write_mem16(&mut self, bus: &mut dyn CpuBus, segment: u16, offset: u16, value: u16) {
+        let [lo, hi] = value.to_le_bytes();
+        bus.write_u8(physical_address(segment, offset), lo);
+        bus.write_u8(physical_address(segment, offset.wrapping_add(1)), hi);
     }
 }
 
@@ -356,5 +469,88 @@ mod tests {
         bus.load(0, &[0x0F]); // single-byte NOP on V30MZ, but not decoded yet
         let mut cpu = cpu();
         assert_eq!(cpu.step(&mut bus), Step::Unimplemented(0x0F));
+    }
+
+    #[test]
+    fn mov_reg_immediate() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xB8, 0x34, 0x12, 0xB1, 0x55]); // MOV AX,0x1234 ; MOV CL,0x55
+        let mut cpu = cpu();
+        cpu.step(&mut bus);
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.ax, 0x1234);
+        assert_eq!(cpu.regs.cl(), 0x55);
+    }
+
+    #[test]
+    fn mov_memory_word_roundtrip() {
+        let mut bus = TestBus::new();
+        // MOV [BX],AX (89, mod=00 reg=0 rm=7) ; MOV DX,[BX] (8B, mod=00 reg=2 rm=7)
+        bus.load(0, &[0x89, 0b00_000_111, 0x8B, 0b00_010_111]);
+        let mut cpu = cpu();
+        cpu.regs.ds = 0x2000;
+        cpu.regs.bx = 0x0040;
+        cpu.regs.ax = 0xBEEF;
+        cpu.step(&mut bus);
+        let addr = physical_address(0x2000, 0x0040);
+        assert_eq!(bus.read_u8(addr), 0xEF);
+        assert_eq!(bus.read_u8(addr + 1), 0xBE);
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.dx, 0xBEEF);
+    }
+
+    #[test]
+    fn mov_segment_registers() {
+        let mut bus = TestBus::new();
+        // MOV ES,AX (8E reg=0=ES rm=0=AX) ; MOV BX,ES (8C reg=0=ES rm=3=BX)
+        bus.load(0, &[0x8E, 0b11_000_000, 0x8C, 0b11_000_011]);
+        let mut cpu = cpu();
+        cpu.regs.ax = 0x9000;
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.es, 0x9000);
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.bx, 0x9000);
+    }
+
+    #[test]
+    fn mov_accumulator_direct_offset() {
+        let mut bus = TestBus::new();
+        // MOV AL,[0x0050] (A0) ; MOV [0x0060],AL (A2)
+        bus.load(0, &[0xA0, 0x50, 0x00, 0xA2, 0x60, 0x00]);
+        let mut cpu = cpu();
+        cpu.regs.ds = 0x1000;
+        bus.write_u8(physical_address(0x1000, 0x0050), 0x7E);
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.al(), 0x7E);
+        cpu.step(&mut bus);
+        assert_eq!(bus.read_u8(physical_address(0x1000, 0x0060)), 0x7E);
+    }
+
+    #[test]
+    fn lea_loads_effective_offset() {
+        let mut bus = TestBus::new();
+        // LEA BX,[BX+SI+0x10]  (8D, mod=01 reg=3=BX rm=0=BX+SI, disp8=0x10)
+        bus.load(0, &[0x8D, 0b01_011_000, 0x10]);
+        let mut cpu = cpu();
+        cpu.regs.bx = 0x0100;
+        cpu.regs.si = 0x0002;
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.bx, 0x0112);
+    }
+
+    #[test]
+    fn xchg_swaps_operands() {
+        let mut bus = TestBus::new();
+        // XCHG CX,DX (87, mod=11 reg=1=CX rm=2=DX) ; XCHG AX,BX (0x93)
+        bus.load(0, &[0x87, 0b11_001_010, 0x93]);
+        let mut cpu = cpu();
+        cpu.regs.cx = 0x1111;
+        cpu.regs.dx = 0x2222;
+        cpu.regs.ax = 0xAAAA;
+        cpu.regs.bx = 0xBBBB;
+        cpu.step(&mut bus);
+        assert_eq!((cpu.regs.cx, cpu.regs.dx), (0x2222, 0x1111));
+        cpu.step(&mut bus);
+        assert_eq!((cpu.regs.ax, cpu.regs.bx), (0xBBBB, 0xAAAA));
     }
 }
