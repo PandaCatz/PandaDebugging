@@ -3,16 +3,17 @@
 //! coherent block with tests. **No cycle counting yet** — the master-vs-CPU
 //! cycle-unit question (see `docs/hardware/01-cpu-v30mz.md`) is unresolved.
 //!
-//! Implemented so far: segment-override / LOCK prefixes; the ALU block
-//! (`ADD/OR/ADC/SBB/AND/SUB/XOR/CMP`, `0x00–0x3D`, all six forms) and GRP1
-//! immediate ALU (`0x80–0x83`); MOV (all forms, segment regs, `LEA`, moffs,
-//! imm); `XCHG`; `INC`/`DEC` r16; `TEST`; `CBW`/`CWD`; `SALC`; the stack ops
-//! (`PUSH`/`POP`, `PUSHF`/`POPF`); control flow (`Jcc`, `JMP`, `CALL`, `RET`,
-//! `LOOP`); and the flag / `NOP` / `HLT` opcodes.
+//! Implemented so far: segment-override / LOCK / REP prefixes; the ALU block
+//! (`ADD/OR/ADC/SBB/AND/SUB/XOR/CMP`, `0x00–0x3D`) and GRP1 immediate ALU
+//! (`0x80–0x83`); MOV (all forms, segment regs, `LEA`, moffs, imm); `XCHG`;
+//! `INC`/`DEC`; `TEST`; `CBW`/`CWD`; `SALC`; GRP3 `NOT`/`NEG`/`MUL`/`IMUL`;
+//! GRP4/5 (`INC`/`DEC` and indirect `CALL`/`JMP`/`PUSH` r/m); the stack ops
+//! (`PUSH`/`POP`, `PUSHF`/`POPF`); string ops + `REP` (`MOVS`/`STOS`/`LODS`/
+//! `CMPS`/`SCAS`); control flow (`Jcc`, `JMP`, `CALL`, `RET`, `LOOP`); and the
+//! flag / `NOP` / `HLT` opcodes.
 //!
-//! Not yet: GRP2 shifts/rotates, GRP3 (`MUL`/`DIV`/`NOT`/`NEG`), GRP4/5
-//! (`INC`/`DEC`/indirect `CALL`/`JMP`/`PUSH` r/m), string ops + `REP`, `INT`/
-//! `IRET` and interrupt delivery, and `IN`/`OUT`.
+//! Not yet: GRP2 shifts/rotates, `DIV`/`IDIV` (need `#DE`), `INT`/`IRET` with
+//! interrupt delivery, and `IN`/`OUT`.
 
 use crate::Cpu;
 use crate::alu;
@@ -38,6 +39,7 @@ impl Cpu {
             return Step::Halted;
         }
         let mut segment_override: Option<u16> = None;
+        let mut rep: Option<u8> = None;
         loop {
             let opcode = self.fetch_u8(bus);
             match opcode {
@@ -45,13 +47,20 @@ impl Cpu {
                 0x2E => segment_override = Some(self.regs.cs),
                 0x36 => segment_override = Some(self.regs.ss),
                 0x3E => segment_override = Some(self.regs.ds),
-                0xF0 => {} // LOCK: no observable effect on WonderSwan
-                _ => return self.execute(bus, opcode, segment_override),
+                0xF0 => {}                         // LOCK: no observable effect
+                0xF2 | 0xF3 => rep = Some(opcode), // REPNE / REP(E)
+                _ => return self.execute(bus, opcode, segment_override, rep),
             }
         }
     }
 
-    fn execute(&mut self, bus: &mut dyn CpuBus, opcode: u8, seg: Option<u16>) -> Step {
+    fn execute(
+        &mut self,
+        bus: &mut dyn CpuBus,
+        opcode: u8,
+        seg: Option<u16>,
+        rep: Option<u8>,
+    ) -> Step {
         // ALU block: opcodes 0x00-0x3D where the low 3 bits select the operand
         // form (0..5). reg field of (opcode>>3)&7 selects the operation.
         if opcode < 0x40 && (opcode & 0x07) < 6 {
@@ -167,6 +176,8 @@ impl Cpu {
                 self.regs.ax = r;
                 self.regs.set_reg16(i, ax);
             }
+            // ---- string ops (honour an optional REP prefix) ----
+            0xA4..=0xA7 | 0xAA..=0xAF => self.execute_string(bus, opcode, seg, rep),
             // ---- INC/DEC r16, immediate ALU, TEST, CBW/CWD, SALC ----
             0x40..=0x47 => {
                 let i = opcode & 7;
@@ -676,6 +687,122 @@ impl Cpu {
         let fits = (-32768..=32767).contains(&result);
         self.regs.flags.carry = !fits;
         self.regs.flags.overflow = !fits;
+    }
+
+    /// Execute a string instruction, honouring an optional REP/REPE/REPNE prefix.
+    /// NOTE: a REP run completes in one call; real hardware allows interrupts
+    /// mid-REP (revisit once interrupt delivery exists).
+    fn execute_string(
+        &mut self,
+        bus: &mut dyn CpuBus,
+        opcode: u8,
+        seg: Option<u16>,
+        rep: Option<u8>,
+    ) {
+        let Some(prefix) = rep else {
+            self.string_iter(bus, opcode, seg);
+            return;
+        };
+        let is_compare = matches!(opcode, 0xA6 | 0xA7 | 0xAE | 0xAF);
+        loop {
+            if self.regs.cx == 0 {
+                break;
+            }
+            self.string_iter(bus, opcode, seg);
+            self.regs.cx = self.regs.cx.wrapping_sub(1);
+            if is_compare {
+                let zero = self.regs.flags.zero;
+                // REP/REPE (F3) continues while ZF=1; REPNE (F2) while ZF=0.
+                if (prefix == 0xF3 && !zero) || (prefix == 0xF2 && zero) {
+                    break;
+                }
+            }
+        }
+    }
+
+    /// One iteration of a string instruction; advances SI/DI per the direction flag.
+    fn string_iter(&mut self, bus: &mut dyn CpuBus, opcode: u8, seg: Option<u16>) {
+        let word = opcode & 1 == 1;
+        let step: i32 = if word { 2 } else { 1 };
+        let delta = if self.regs.flags.direction {
+            -step
+        } else {
+            step
+        };
+        let src_seg = seg.unwrap_or(self.regs.ds);
+        match opcode {
+            0xA4 | 0xA5 => {
+                // MOVS: [ES:DI] <- [seg:SI]
+                let (si, di, es) = (self.regs.si, self.regs.di, self.regs.es);
+                if word {
+                    let v = self.read_mem16(bus, src_seg, si);
+                    self.write_mem16(bus, es, di, v);
+                } else {
+                    let v = bus.read_u8(physical_address(src_seg, si));
+                    bus.write_u8(physical_address(es, di), v);
+                }
+                self.regs.si = Self::advanced(si, delta);
+                self.regs.di = Self::advanced(di, delta);
+            }
+            0xAA | 0xAB => {
+                // STOS: [ES:DI] <- AL/AX
+                let (di, es) = (self.regs.di, self.regs.es);
+                if word {
+                    let ax = self.regs.ax;
+                    self.write_mem16(bus, es, di, ax);
+                } else {
+                    let al = self.regs.al();
+                    bus.write_u8(physical_address(es, di), al);
+                }
+                self.regs.di = Self::advanced(di, delta);
+            }
+            0xAC | 0xAD => {
+                // LODS: AL/AX <- [seg:SI]
+                let si = self.regs.si;
+                if word {
+                    let v = self.read_mem16(bus, src_seg, si);
+                    self.regs.ax = v;
+                } else {
+                    let v = bus.read_u8(physical_address(src_seg, si));
+                    self.regs.set_al(v);
+                }
+                self.regs.si = Self::advanced(si, delta);
+            }
+            0xA6 | 0xA7 => {
+                // CMPS: CMP [seg:SI], [ES:DI]
+                let (si, di, es) = (self.regs.si, self.regs.di, self.regs.es);
+                if word {
+                    let a = self.read_mem16(bus, src_seg, si);
+                    let b = self.read_mem16(bus, es, di);
+                    alu::cmp16(&mut self.regs.flags, a, b);
+                } else {
+                    let a = bus.read_u8(physical_address(src_seg, si));
+                    let b = bus.read_u8(physical_address(es, di));
+                    alu::cmp8(&mut self.regs.flags, a, b);
+                }
+                self.regs.si = Self::advanced(si, delta);
+                self.regs.di = Self::advanced(di, delta);
+            }
+            _ => {
+                // SCAS (0xAE/0xAF): CMP AL/AX, [ES:DI]
+                let (di, es) = (self.regs.di, self.regs.es);
+                if word {
+                    let a = self.regs.ax;
+                    let b = self.read_mem16(bus, es, di);
+                    alu::cmp16(&mut self.regs.flags, a, b);
+                } else {
+                    let a = self.regs.al();
+                    let b = bus.read_u8(physical_address(es, di));
+                    alu::cmp8(&mut self.regs.flags, a, b);
+                }
+                self.regs.di = Self::advanced(di, delta);
+            }
+        }
+    }
+
+    /// Advance a string-op index register by `delta`, wrapping in 16 bits.
+    fn advanced(reg: u16, delta: i32) -> u16 {
+        (i32::from(reg) + delta) as u16
     }
 
     /// Evaluate an 8086 condition code (the low nibble of a `Jcc` opcode).
@@ -1338,5 +1465,85 @@ mod tests {
         bus.load(0, &[0xF6, 0b11_110_011]); // DIV BL (reg=6) — not implemented yet
         let mut cpu = cpu();
         assert_eq!(cpu.step(&mut bus), Step::Unimplemented(0xF6));
+    }
+
+    #[test]
+    fn rep_stosb_fills_memory() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xF3, 0xAA]); // REP STOSB
+        let mut cpu = cpu();
+        cpu.regs.es = 0x2000;
+        cpu.regs.di = 0x0000;
+        cpu.regs.set_al(0x5A);
+        cpu.regs.cx = 3;
+        cpu.step(&mut bus);
+        for i in 0..3u16 {
+            assert_eq!(bus.read_u8(physical_address(0x2000, i)), 0x5A);
+        }
+        assert_eq!(cpu.regs.di, 0x0003);
+        assert_eq!(cpu.regs.cx, 0);
+        assert_eq!(
+            bus.read_u8(physical_address(0x2000, 3)),
+            0x00,
+            "stopped at CX=0"
+        );
+    }
+
+    #[test]
+    fn movsb_copies_and_advances() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xA4]); // MOVSB
+        let mut cpu = cpu();
+        cpu.regs.ds = 0x1000;
+        cpu.regs.si = 0x0010;
+        cpu.regs.es = 0x2000;
+        cpu.regs.di = 0x0020;
+        bus.write_u8(physical_address(0x1000, 0x0010), 0x99);
+        cpu.step(&mut bus);
+        assert_eq!(bus.read_u8(physical_address(0x2000, 0x0020)), 0x99);
+        assert_eq!((cpu.regs.si, cpu.regs.di), (0x0011, 0x0021));
+    }
+
+    #[test]
+    fn lodsw_loads_ax_and_advances_by_two() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xAD]); // LODSW
+        let mut cpu = cpu();
+        cpu.regs.ds = 0x1000;
+        cpu.regs.si = 0x0000;
+        bus.write_u8(physical_address(0x1000, 0), 0xCD);
+        bus.write_u8(physical_address(0x1000, 1), 0xAB);
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.ax, 0xABCD);
+        assert_eq!(cpu.regs.si, 0x0002);
+    }
+
+    #[test]
+    fn direction_flag_decrements_index() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xAA]); // STOSB
+        let mut cpu = cpu();
+        cpu.regs.es = 0x2000;
+        cpu.regs.di = 0x0010;
+        cpu.regs.set_al(0x11);
+        cpu.regs.flags.direction = true;
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.di, 0x000F, "DF=1 decrements DI");
+    }
+
+    #[test]
+    fn repne_scasb_stops_on_match() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xF2, 0xAE]); // REPNE SCASB
+        let mut cpu = cpu();
+        cpu.regs.es = 0x2000;
+        cpu.regs.di = 0x0000;
+        cpu.regs.cx = 8;
+        cpu.regs.set_al(0x42);
+        bus.write_u8(physical_address(0x2000, 2), 0x42); // match at offset 2
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.di, 0x0003, "advanced past the match");
+        assert_eq!(cpu.regs.cx, 5);
+        assert!(cpu.regs.flags.zero);
     }
 }
