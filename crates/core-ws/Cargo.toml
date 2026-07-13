@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 format-ws = { path = "../format-ws" }
+cpu-v30mz = { path = "../cpu-v30mz" }
 
 [lints]
 workspace = true
