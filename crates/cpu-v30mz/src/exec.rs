@@ -376,6 +376,39 @@ impl Cpu {
                     self.regs.ip = self.regs.ip.wrapping_add(rel);
                 }
             }
+            // ---- I/O ports ----
+            0xE4 => {
+                let port = u16::from(self.fetch_u8(bus));
+                let v = bus.io_read_u8(port);
+                self.regs.set_al(v);
+            }
+            0xE5 => {
+                let port = u16::from(self.fetch_u8(bus));
+                self.regs.ax = bus.io_read_u16(port);
+            }
+            0xE6 => {
+                let port = u16::from(self.fetch_u8(bus));
+                let al = self.regs.al();
+                bus.io_write_u8(port, al);
+            }
+            0xE7 => {
+                let port = u16::from(self.fetch_u8(bus));
+                let ax = self.regs.ax;
+                bus.io_write_u16(port, ax);
+            }
+            0xEC => {
+                let v = bus.io_read_u8(self.regs.dx);
+                self.regs.set_al(v);
+            }
+            0xED => self.regs.ax = bus.io_read_u16(self.regs.dx),
+            0xEE => {
+                let al = self.regs.al();
+                bus.io_write_u8(self.regs.dx, al);
+            }
+            0xEF => {
+                let ax = self.regs.ax;
+                bus.io_write_u16(self.regs.dx, ax);
+            }
             // ---- group opcodes (GRP3 F6/F7, GRP4 FE, GRP5 FF) ----
             0xF6 | 0xF7 => {
                 if !self.execute_grp3(bus, opcode, seg) {
@@ -898,11 +931,13 @@ mod tests {
 
     struct TestBus {
         mem: Vec<u8>,
+        io: Vec<u8>,
     }
     impl TestBus {
         fn new() -> Self {
             Self {
                 mem: vec![0; (ADDR_MASK as usize) + 1],
+                io: vec![0; 0x1_0000],
             }
         }
         fn load(&mut self, addr: u32, bytes: &[u8]) {
@@ -918,10 +953,12 @@ mod tests {
         fn write_u8(&mut self, a: u32, v: u8) {
             self.mem[(a & ADDR_MASK) as usize] = v;
         }
-        fn io_read_u8(&mut self, _p: u16) -> u8 {
-            0
+        fn io_read_u8(&mut self, p: u16) -> u8 {
+            self.io[p as usize]
         }
-        fn io_write_u8(&mut self, _p: u16, _v: u8) {}
+        fn io_write_u8(&mut self, p: u16, v: u8) {
+            self.io[p as usize] = v;
+        }
     }
 
     /// Fresh CPU executing from 0000:0000 for compact test programs.
@@ -1529,6 +1566,33 @@ mod tests {
         cpu.regs.flags.direction = true;
         cpu.step(&mut bus);
         assert_eq!(cpu.regs.di, 0x000F, "DF=1 decrements DI");
+    }
+
+    #[test]
+    fn out_then_in_immediate_port() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xE6, 0x40, 0xE4, 0x40]); // OUT 0x40,AL ; IN AL,0x40
+        let mut cpu = cpu();
+        cpu.regs.set_al(0xAB);
+        cpu.step(&mut bus);
+        assert_eq!(bus.io[0x40], 0xAB);
+        cpu.regs.set_al(0x00);
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.al(), 0xAB);
+    }
+
+    #[test]
+    fn in_out_via_dx_port() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xEE, 0xEC]); // OUT DX,AL ; IN AL,DX
+        let mut cpu = cpu();
+        cpu.regs.dx = 0x00B5;
+        cpu.regs.set_al(0x5A);
+        cpu.step(&mut bus);
+        assert_eq!(bus.io[0xB5], 0x5A);
+        cpu.regs.set_al(0x00);
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.al(), 0x5A);
     }
 
     #[test]
