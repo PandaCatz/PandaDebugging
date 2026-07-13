@@ -6,6 +6,7 @@ members = [
     "crates/core-ws",
     "crates/ws-testkit",
     "crates/ws-cli",
+    "crates/v20-harness",
 ]
 resolver = "3"
 

@@ -1,0 +1,16 @@
+[package]
+name = "v20-harness"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "v20-harness"
+path = "src/main.rs"
+
+[dependencies]
+cpu-v30mz = { path = "../cpu-v30mz" }
+
+[lints]
+workspace = true

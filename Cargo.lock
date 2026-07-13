@@ -19,6 +19,13 @@ name = "format-ws"
 version = "0.1.0"
 
 [[package]]
+name = "v20-harness"
+version = "0.1.0"
+dependencies = [
+ "cpu-v30mz",
+]
+
+[[package]]
 name = "ws-cli"
 version = "0.1.0"
 dependencies = [

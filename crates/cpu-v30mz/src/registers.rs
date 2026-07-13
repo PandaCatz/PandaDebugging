@@ -2,10 +2,10 @@
 //!
 //! All facts here are spec-grounded and timing-independent (see
 //! `docs/hardware/01-cpu-v30mz.md`). The reset vector `CS:IP = FFFF:0000` is
-//! confirmed (WSMan over HTTP + WSdev Boot ROM). The exact FLAGS word read back
-//! immediately after reset (whether the mode bit MD reads 0 or 1 → `0x7002` vs
-//! `0xF002`) is an open question; we therefore reset the *defined* flags to a
-//! known state and do not materialise a disputed MD bit.
+//! confirmed (WSMan over HTTP + WSdev Boot ROM). The materialised FLAGS word
+//! sets bits 1 and 12–15 to 1 (`0xF002`) in native mode — the value pushed by
+//! `PUSHF`/interrupt entry — confirmed against the V20 single-step oracle and
+//! ARMV30MZ. (WSCpuTest can still verify the MD bit for the V30MZ specifically.)
 
 /// Compute a 20-bit physical address from a segment:offset pair, with the
 /// classic 8086/V30MZ wrap at the 1 MiB boundary.
@@ -31,7 +31,6 @@ pub struct Flags {
 
 impl Flags {
     const CF: u16 = 1 << 0;
-    const RESERVED1: u16 = 1 << 1; // reads as 1 on 8086-class parts
     const PF: u16 = 1 << 2;
     const AF: u16 = 1 << 4;
     const ZF: u16 = 1 << 6;
@@ -40,15 +39,17 @@ impl Flags {
     const IF: u16 = 1 << 9;
     const DF: u16 = 1 << 10;
     const OF: u16 = 1 << 11;
+    /// Bits that always read 1 on 8086/V20/V30MZ in native mode: reserved bit 1
+    /// plus bits 12–15 (which include the V30MZ mode bit MD at 15). The V20
+    /// single-step oracle and ARMV30MZ both push `0xF002`, so this is now
+    /// resolved for native-mode operation.
+    const ALWAYS_ONE: u16 = 0xF002;
 
-    /// Materialise the defined flags plus the always-1 reserved bit 1.
-    ///
-    /// Bits 12–15 (including the V30MZ mode bit MD at 15) are left 0 here: their
-    /// power-on read-back value is unresolved (see module docs) and must not be
-    /// baked into a literal until confirmed against hardware / WSCpuTest.
+    /// Materialise the defined flags plus the always-1 bits ([`Flags::ALWAYS_ONE`]).
+    /// This is exactly the word `PUSHF` and interrupt entry write to the stack.
     #[must_use]
     pub const fn to_word(self) -> u16 {
-        let mut w = Self::RESERVED1;
+        let mut w = Self::ALWAYS_ONE;
         if self.carry {
             w |= Self::CF;
         }

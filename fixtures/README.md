@@ -3,6 +3,15 @@
 Everything in this directory except this file and `*.sha256` manifests is
 gitignored. Nothing here is redistributable — see `../docs/LEGAL_PROVENANCE.md`.
 
+## `v20-tests/` — CPU validation oracle
+
+The V20 single-step tests (MIT, <https://github.com/SingleStepTests/v20>) live
+in `v20-tests/*.json.gz`, flattened to `v20-tests/prepared/*.tsv` by
+`tools/v20_prep.py`. They are MIT-licensed but large (~2.5 MB/opcode), so they
+are fetched on demand, not committed. See `../docs/VALIDATION.md`. Fetch a
+curated subset with `curl` from the repo's `v1_native/` directory; skip the
+`0F*` files (V20 extensions the V30MZ lacks).
+
 ## Expected contents
 
 ```
