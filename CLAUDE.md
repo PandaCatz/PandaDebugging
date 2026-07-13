@@ -53,20 +53,21 @@ Phase 1 (headless skeleton) is complete and green. The workspace contains:
   Remaining: hardware IRQ delivery (the machine must consult
   core-ws::InterruptController before each step), a few V30MZ-undocumented slots
   (e.g. 0xF1), and **all cycle timing** (blocked on the cycle-unit question).
-- `core-ws`: cartridge ownership boundary + I/O register map (doc-cited
-  addresses) + a fully unit-tested interrupt-controller model (8 lines,
-  edge-vs-level semantics, bit-priority selection, relocatable vector base) +
-  a minimal `Machine` (CPU + bus + interrupt controller) that delivers hardware
-  IRQs before each step. Its memory map is a **placeholder flat 1 MiB** — the
-  real WonderSwan map (RAM sizing, ROM/SRAM banking, full I/O) is future work.
+- `core-ws`: cartridge boundary + I/O register map + interrupt-controller model +
+  a minimal `Machine` (CPU + bus + interrupt controller) with hardware-IRQ
+  delivery, plus the audited community-bug subsystems: `apu` (noise LFSR, #4),
+  `serial` (UART, #3), `palette` (pool + color-zero, #5/#6), `eeprom` (#8),
+  `ppu::SpriteUnit` (sprite double-buffer, #2). **These subsystems are isolated
+  and unit-tested but not yet wired to a register dispatch.** The machine's
+  memory map is a **placeholder flat 1 MiB** — the real WonderSwan map (RAM
+  sizing, ROM/SRAM banking, full I/O) is the next big piece.
 - `ws-testkit`: deterministic synthetic core, capture sink, stable FNV-64 hashes.
 - `ws-cli`: headless synthetic run + `--rom` inspector (no ROM bytes logged).
+- `v20-harness`: runs the V20 single-step oracle against `cpu-v30mz`.
 
-Not implemented yet: the V30MZ opcode decoder/executor and interrupt-delivery
-sequence, the memory bus and access-slot model, the PPU, the APU, the
-general-purpose and sound DMA engines, EEPROM/RTC/serial devices, the BIOS boot
-path, save/state, and any frontend. This crate set is **not** a running
-WonderSwan core.
+Not implemented yet: the real WonderSwan memory map wiring, the general-purpose /
+sound DMA engines, RTC, pixel rendering, the BIOS boot path, save/state, timing,
+and any frontend. This is **not** a playable emulator yet.
 
 ## Completed work
 
@@ -137,28 +138,27 @@ Verified on Windows x86-64 with Rust/Cargo 1.96.0 on 2026-07-13:
 
 ## Next tasks, in order
 
-See `ROADMAP.md` for the full phase plan and exit gates. Immediate Phase 0/2
-work:
+The driving goal is the community-bug ledger (`docs/COMMUNITY-BUGS.md`): 5 fixed,
+3 partial, 1 remaining, all adversarially audited vs WSMan/WSdev/ares.
 
-1. Replace the placeholder flat bus with the real WonderSwan memory map in
-   `core-ws` (RAM sizing per model, ROM/SRAM banking, the full I/O register file)
-   — from verified WSMan details. This is the path to booting real ROMs.
-2. Acquire WSCpuTest (needs the wf-toolchain or a prebuilt `.ws`) and run it on
-   the machine. It is the WonderSwan-specific authority for the items the V20
-   oracle can't settle: undefined-flag values (shift AF, DIV flags), the GRP2
-   count-mask, and 0x0F/0x64-0x67 inert-NOP behaviour.
-3. Resolve the cycle-unit ambiguity (LFSR/DMA measurement) and only then add
-   per-instruction timing.
-   (Done: full V30MZ instruction set, machine + hardware-IRQ delivery, and V20
-   single-step validation — zero defined-behaviour bugs; see docs/VALIDATION.md.)
-2. Add the interrupt-delivery sequence and wire `core-ws::InterruptController`
-   to the CPU (IVT at `REG_INT_BASE`, push flags/CS/IP, clear IF/TF).
-3. Acquire the hardware test ROMs into gitignored `fixtures/` (`docs/TEST_ROMS.md`)
-   and stand up the headless test-ROM runner in `ws-testkit`; validate opcodes
-   against WSCpuTest (auto-runs on boot) and interrupts against WSHWTest.
-4. Resolve the cycle-unit ambiguity via an LFSR/DMA measurement, then add timing.
-5. Transcribe and decode the ROM header fields in `format-ws` (Phase 0), with
-   oversize/truncation tests.
+Done so far: full V30MZ instruction set (V20-validated, zero defined-behaviour
+bugs — `docs/VALIDATION.md`); minimal `core-ws::Machine` with hardware-IRQ
+delivery; and six community-bug subsystems (`apu`, `serial`, `palette`, `eeprom`,
+`ppu`) — currently **isolated modules, not yet wired to a register dispatch**.
+
+1. **Community bug #9 (8-bit ROM bus):** decode `REG_HW_FLAGS` bit 2 in
+   `format-ws` (a deferred Phase-0 header task) and add a cart bus-width model.
+   Last self-contained fix.
+2. **Real WonderSwan memory map** in `core-ws` (RAM sizing per model, ROM/SRAM
+   banking, the full I/O register file — from *verified* WSMan/WSdev/libws, with
+   explicit gaps). This replaces the placeholder flat bus AND wires the six fixed
+   subsystems to their registers so the fixes run in a real machine.
+3. **Acquire WSCpuTest** (wf-toolchain build or a prebuilt `.ws`) and boot it on
+   the machine. It's the WonderSwan authority for the still-open questions the
+   V20 couldn't settle: undefined flags (shift AF, DIV), the GRP2 count-mask,
+   0x0F/0x64-0x67 inert-NOP, and the #3 serial latch-vs-level semantics.
+4. **Resolve the cycle-unit ambiguity** (LFSR/DMA measurement) → then add
+   per-instruction timing, closing community bugs #1 and #7.
 
 ## Decisions still open
 
