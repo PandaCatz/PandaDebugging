@@ -1,0 +1,22 @@
+# Build output
+/target
+**/*.rs.bk
+
+# Operator-supplied, non-redistributable binaries. Never commit these.
+# BIOS / boot ROM, cartridge dumps, save data, test-ROM binaries.
+/fixtures/**
+!/fixtures/README.md
+!/fixtures/*.sha256
+*.ws
+*.wsc
+*.pc2
+*.rom
+*.bin
+*.sav
+*.eep
+*.sram
+*.state
+
+# Local scratch
+/scratch
+*.log

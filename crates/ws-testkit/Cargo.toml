@@ -1,0 +1,12 @@
+[package]
+name = "ws-testkit"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+ws-contracts = { path = "../ws-contracts" }
+
+[lints]
+workspace = true

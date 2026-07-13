@@ -1,0 +1,13 @@
+# Keep automatic exploration cheap and legally clean.
+/target
+/fixtures
+*.ws
+*.wsc
+*.pc2
+*.rom
+*.bin
+*.sav
+*.eep
+*.sram
+*.state
+Cargo.lock

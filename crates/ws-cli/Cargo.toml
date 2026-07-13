@@ -1,0 +1,18 @@
+[package]
+name = "ws-cli"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "ws-cli"
+path = "src/main.rs"
+
+[dependencies]
+ws-testkit = { path = "../ws-testkit" }
+format-ws = { path = "../format-ws" }
+core-ws = { path = "../core-ws" }
+
+[lints]
+workspace = true

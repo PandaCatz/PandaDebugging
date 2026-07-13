@@ -1,0 +1,9 @@
+[package]
+name = "ws-contracts"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
