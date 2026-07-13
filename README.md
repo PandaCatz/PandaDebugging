@@ -1,5 +1,10 @@
 # wonderswan-emu
 
+[![CI](https://github.com/PandaCatz/PandaDebugging/actions/workflows/ci.yml/badge.svg)](https://github.com/PandaCatz/PandaDebugging/actions/workflows/ci.yml)
+[![Rust](https://img.shields.io/badge/rust-1.96.0-informational?logo=rust)](rust-toolchain.toml)
+[![License: PolyForm NC 1.0.0](https://img.shields.io/badge/license-PolyForm%20NC%201.0.0-lightgrey)](https://polyformproject.org/licenses/noncommercial/1.0.0/)
+[![Milestone](https://img.shields.io/github/v/release/PandaCatz/PandaDebugging?label=milestone&color=blue)](https://github.com/PandaCatz/PandaDebugging/releases)
+
 A deterministic, independently testable WonderSwan / WonderSwan Color emulator
 core in Rust, built to be *accurate first*: every hardware behaviour is measured
 or cited before it is claimed to work.
@@ -45,7 +50,14 @@ question resolved for timing.
 
 Verified on Rust/Cargo 1.96.0 (Windows x86-64): `cargo fmt --check`,
 `cargo clippy --all-targets -- -D warnings`, and **133 tests** all pass in debug
-and release. No `unsafe`; warnings are errors.
+and release. No `unsafe`; warnings are errors. The same gate runs in
+[CI](https://github.com/PandaCatz/PandaDebugging/actions/workflows/ci.yml) on
+every push.
+
+**Milestones** are tagged and published as
+[Releases](https://github.com/PandaCatz/PandaDebugging/releases): `v0.1.0`
+headless skeleton → `v0.2.0` V30MZ instruction set → `v0.3.0` machine + IRQ
+delivery → `v0.4.0` V20 oracle validation → `v0.5.0` community-bug fixes.
 
 The CPU is additionally validated against the **V20 single-step hardware oracle**
 (620k cases): **zero defined-behaviour bugs** — every divergence is a V20-only

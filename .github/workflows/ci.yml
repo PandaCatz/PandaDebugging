@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+# Least-privilege: CI only needs to read the repository.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref to save runner time.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: fmt · clippy · test (Rust 1.96.0)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # rust-toolchain.toml pins channel 1.96.0 with clippy + rustfmt (profile
+      # minimal); `rustup show` installs exactly that. The redundant component
+      # add is belt-and-suspenders so a runner image change can't yield a red
+      # gate on a missing component.
+      - name: Install pinned toolchain
+        run: |
+          rustup show
+          rustup component add clippy rustfmt
+          rustc --version && cargo --version
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (warnings are errors)
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Test (debug)
+        run: cargo test --workspace --all-targets --all-features
+
+      - name: Test (release)
+        run: cargo test --release --workspace
+
+      - name: Headless CLI smoke run
+        run: cargo run --release -p ws-cli
