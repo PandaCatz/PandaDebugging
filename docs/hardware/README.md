@@ -6,6 +6,8 @@ every behaviour and flag anything still unverified as an open question.
 
 - [`00-overview.md`](00-overview.md) — SoC family, bug map, priority fix order,
   and a distilled reference for every subsystem. **Read first.**
+- [`../VALIDATION.md`](../VALIDATION.md) — how the CPU is validated against the
+  V20 single-step oracle, and what it resolved (e.g. the MD flag bit → `0xF002`).
 - [`01-cpu-v30mz.md`](01-cpu-v30mz.md) — opcode map, cycle timing, flags/
   arithmetic/exceptions, memory & I/O map, and the CPU test-ROM validation plan.
   Web-enriched and adversarially fact-checked; unverified items are in its

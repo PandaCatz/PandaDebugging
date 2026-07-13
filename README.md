@@ -18,6 +18,11 @@ Verified on Rust/Cargo 1.96.0 (Windows x86-64): `cargo fmt --check`,
 `cargo clippy --all-targets -- -D warnings`, and **111 tests** all pass in debug
 and release. No `unsafe`; warnings are errors.
 
+The CPU is additionally validated against the **V20 single-step hardware oracle**
+(620k cases): **zero defined-behaviour bugs** — every divergence is a V20-only
+instruction or an officially-undefined flag. See
+[`docs/VALIDATION.md`](docs/VALIDATION.md).
+
 | Phase | What | Status |
 |------:|------|--------|
 | 0 | Charter, toolchain, fixtures, provenance | 🔨 in progress (toolchain + provenance done; ROM-header decode & test-ROM acquisition pending) |

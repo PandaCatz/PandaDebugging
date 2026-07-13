@@ -120,6 +120,11 @@ Verified on Windows x86-64 with Rust/Cargo 1.96.0 on 2026-07-13:
 - `cargo test --workspace --all-targets --all-features` — 111 passed, 0 failed
   (cpu-v30mz 85, core-ws 12, format-ws 6, ws-testkit 5, ws-contracts 3, ws-cli 0).
 - `cargo test --release --workspace` — 111 passed, 0 failed.
+- `cargo run -p v20-harness --release` — V20 single-step oracle: 93.49% exact
+  pass over 612k runnable cases, **zero defined-behaviour bugs** (all divergences
+  are V20-only instructions or officially-undefined flags). See
+  `docs/VALIDATION.md`. Found + fixed the `Flags::to_word` high-bits bug
+  (resolves the MD-bit open question → `0xF002`).
 - `cargo run --release -p ws-cli` — synthetic baseline:
   - final tick: `30`
   - video: `3` frames, hash `2d1f1e3d37030229`
@@ -131,17 +136,17 @@ Verified on Windows x86-64 with Rust/Cargo 1.96.0 on 2026-07-13:
 See `ROADMAP.md` for the full phase plan and exit gates. Immediate Phase 0/2
 work:
 
-1. **Get the first real accuracy signal.** All CPU tests so far are hand-written
-   assumptions. Acquire an oracle (operator-supplied): the **V20 single-step
-   tests** (JSON per-instruction, no WS toolchain — recommended first) or
-   **WSCpuTest** (WS-specific, needs the wf-toolchain + more machine to boot).
-   Build the runner in `ws-testkit` and fix divergences — this validates the
-   GRP2 count-mask choice, the MUL/DIV undefined-flag choices, and flags broadly.
-2. Replace the placeholder flat bus with the real WonderSwan memory map in
+1. Replace the placeholder flat bus with the real WonderSwan memory map in
    `core-ws` (RAM sizing per model, ROM/SRAM banking, the full I/O register file)
-   — from verified WSMan details.
+   — from verified WSMan details. This is the path to booting real ROMs.
+2. Acquire WSCpuTest (needs the wf-toolchain or a prebuilt `.ws`) and run it on
+   the machine. It is the WonderSwan-specific authority for the items the V20
+   oracle can't settle: undefined-flag values (shift AF, DIV flags), the GRP2
+   count-mask, and 0x0F/0x64-0x67 inert-NOP behaviour.
 3. Resolve the cycle-unit ambiguity (LFSR/DMA measurement) and only then add
-   per-instruction timing. (Machine + hardware-IRQ delivery: done.)
+   per-instruction timing.
+   (Done: full V30MZ instruction set, machine + hardware-IRQ delivery, and V20
+   single-step validation — zero defined-behaviour bugs; see docs/VALIDATION.md.)
 2. Add the interrupt-delivery sequence and wire `core-ws::InterruptController`
    to the CPU (IVT at `REG_INT_BASE`, push flags/CS/IP, clear IF/TF).
 3. Acquire the hardware test ROMs into gitignored `fixtures/` (`docs/TEST_ROMS.md`)
