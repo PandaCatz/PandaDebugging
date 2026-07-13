@@ -365,6 +365,22 @@ impl Cpu {
                     self.regs.ip = self.regs.ip.wrapping_add(rel);
                 }
             }
+            // ---- group opcodes (GRP3 F6/F7, GRP4 FE, GRP5 FF) ----
+            0xF6 | 0xF7 => {
+                if !self.execute_grp3(bus, opcode, seg) {
+                    return Step::Unimplemented(opcode);
+                }
+            }
+            0xFE => {
+                if !self.execute_grp4(bus, seg) {
+                    return Step::Unimplemented(opcode);
+                }
+            }
+            0xFF => {
+                if !self.execute_grp5(bus, seg) {
+                    return Step::Unimplemented(opcode);
+                }
+            }
             // ---- flags / control ----
             0xF4 => {
                 self.halted = true;
@@ -473,6 +489,193 @@ impl Cpu {
                 return None;
             }
         })
+    }
+
+    /// GRP3 (`0xF6`/`0xF7`): TEST/NOT/NEG/MUL/IMUL. Returns `false` for the
+    /// deferred DIV/IDIV sub-ops (they need the `#DE` exception path).
+    fn execute_grp3(&mut self, bus: &mut dyn CpuBus, opcode: u8, seg: Option<u16>) -> bool {
+        let word = opcode & 1 == 1;
+        let m = self.decode_modrm(bus, seg);
+        match m.reg {
+            0 | 1 => {
+                // TEST E, imm
+                if word {
+                    let imm = self.fetch_u16(bus);
+                    let a = self.read_rm16(bus, m.rm);
+                    alu::test16(&mut self.regs.flags, a, imm);
+                } else {
+                    let imm = self.fetch_u8(bus);
+                    let a = self.read_rm8(bus, m.rm);
+                    alu::test8(&mut self.regs.flags, a, imm);
+                }
+            }
+            2 => {
+                // NOT (no flags)
+                if word {
+                    let v = alu::not16(self.read_rm16(bus, m.rm));
+                    self.write_rm16(bus, m.rm, v);
+                } else {
+                    let v = alu::not8(self.read_rm8(bus, m.rm));
+                    self.write_rm8(bus, m.rm, v);
+                }
+            }
+            3 => {
+                // NEG
+                if word {
+                    let a = self.read_rm16(bus, m.rm);
+                    let v = alu::neg16(&mut self.regs.flags, a);
+                    self.write_rm16(bus, m.rm, v);
+                } else {
+                    let a = self.read_rm8(bus, m.rm);
+                    let v = alu::neg8(&mut self.regs.flags, a);
+                    self.write_rm8(bus, m.rm, v);
+                }
+            }
+            4 => {
+                if word {
+                    let src = self.read_rm16(bus, m.rm);
+                    self.mul16(src);
+                } else {
+                    let src = self.read_rm8(bus, m.rm);
+                    self.mul8(src);
+                }
+            }
+            5 => {
+                if word {
+                    let src = self.read_rm16(bus, m.rm);
+                    self.imul16(src);
+                } else {
+                    let src = self.read_rm8(bus, m.rm);
+                    self.imul8(src);
+                }
+            }
+            // DIV (6) / IDIV (7) raise #DE on error and thus need interrupt
+            // delivery, which is not implemented yet.
+            _ => return false,
+        }
+        true
+    }
+
+    /// GRP4 (`0xFE`): INC/DEC r/m8.
+    fn execute_grp4(&mut self, bus: &mut dyn CpuBus, seg: Option<u16>) -> bool {
+        let m = self.decode_modrm(bus, seg);
+        match m.reg {
+            0 => {
+                let a = self.read_rm8(bus, m.rm);
+                let v = alu::inc8(&mut self.regs.flags, a);
+                self.write_rm8(bus, m.rm, v);
+            }
+            1 => {
+                let a = self.read_rm8(bus, m.rm);
+                let v = alu::dec8(&mut self.regs.flags, a);
+                self.write_rm8(bus, m.rm, v);
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    /// GRP5 (`0xFF`): INC/DEC r/m16, indirect CALL/JMP (near/far), PUSH r/m16.
+    fn execute_grp5(&mut self, bus: &mut dyn CpuBus, seg: Option<u16>) -> bool {
+        let m = self.decode_modrm(bus, seg);
+        match m.reg {
+            0 => {
+                let a = self.read_rm16(bus, m.rm);
+                let v = alu::inc16(&mut self.regs.flags, a);
+                self.write_rm16(bus, m.rm, v);
+            }
+            1 => {
+                let a = self.read_rm16(bus, m.rm);
+                let v = alu::dec16(&mut self.regs.flags, a);
+                self.write_rm16(bus, m.rm, v);
+            }
+            2 => {
+                // CALL near indirect
+                let target = self.read_rm16(bus, m.rm);
+                let ret = self.regs.ip;
+                self.push16(bus, ret);
+                self.regs.ip = target;
+            }
+            3 => {
+                // CALL far indirect (memory operand only)
+                let Rm::Memory {
+                    segment, offset, ..
+                } = m.rm
+                else {
+                    return false;
+                };
+                let new_ip = self.read_mem16(bus, segment, offset);
+                let new_cs = self.read_mem16(bus, segment, offset.wrapping_add(2));
+                let (cs, ip) = (self.regs.cs, self.regs.ip);
+                self.push16(bus, cs);
+                self.push16(bus, ip);
+                self.regs.cs = new_cs;
+                self.regs.ip = new_ip;
+            }
+            4 => {
+                // JMP near indirect
+                let target = self.read_rm16(bus, m.rm);
+                self.regs.ip = target;
+            }
+            5 => {
+                // JMP far indirect (memory operand only)
+                let Rm::Memory {
+                    segment, offset, ..
+                } = m.rm
+                else {
+                    return false;
+                };
+                self.regs.ip = self.read_mem16(bus, segment, offset);
+                self.regs.cs = self.read_mem16(bus, segment, offset.wrapping_add(2));
+            }
+            6 => {
+                // PUSH Ev
+                let v = self.read_rm16(bus, m.rm);
+                self.push16(bus, v);
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    /// Unsigned multiply: `AX = AL * src`.
+    fn mul8(&mut self, src: u8) {
+        let result = u16::from(self.regs.al()) * u16::from(src);
+        self.regs.ax = result;
+        let upper = (result >> 8) != 0;
+        self.regs.flags.carry = upper;
+        self.regs.flags.overflow = upper;
+        // SF/ZF/PF/AF are officially undefined after MUL; left unchanged pending
+        // WSCpuTest confirmation (see docs/hardware/01-cpu-v30mz.md appendix).
+    }
+
+    /// Unsigned multiply: `DX:AX = AX * src`.
+    fn mul16(&mut self, src: u16) {
+        let result = u32::from(self.regs.ax) * u32::from(src);
+        self.regs.ax = result as u16;
+        self.regs.dx = (result >> 16) as u16;
+        let upper = self.regs.dx != 0;
+        self.regs.flags.carry = upper;
+        self.regs.flags.overflow = upper;
+    }
+
+    /// Signed multiply: `AX = AL * src`.
+    fn imul8(&mut self, src: u8) {
+        let result = i16::from(self.regs.al() as i8) * i16::from(src as i8);
+        self.regs.ax = result as u16;
+        let fits = (-128..=127).contains(&result);
+        self.regs.flags.carry = !fits;
+        self.regs.flags.overflow = !fits;
+    }
+
+    /// Signed multiply: `DX:AX = AX * src`.
+    fn imul16(&mut self, src: u16) {
+        let result = i32::from(self.regs.ax as i16) * i32::from(src as i16);
+        self.regs.ax = result as u16;
+        self.regs.dx = (result >> 16) as u16;
+        let fits = (-32768..=32767).contains(&result);
+        self.regs.flags.carry = !fits;
+        self.regs.flags.overflow = !fits;
     }
 
     /// Evaluate an 8086 condition code (the low nibble of a `Jcc` opcode).
@@ -1029,5 +1232,111 @@ mod tests {
         cpu.regs.flags.carry = false;
         cpu.step(&mut bus);
         assert_eq!(cpu.regs.al(), 0x00);
+    }
+
+    #[test]
+    fn grp3_not_and_neg() {
+        let mut bus = TestBus::new();
+        // NOT AL (F6 /2, mod=11 rm=0) ; NEG AX (F7 /3, mod=11 rm=0)
+        bus.load(0, &[0xF6, 0b11_010_000, 0xF7, 0b11_011_000]);
+        let mut cpu = cpu();
+        cpu.regs.set_al(0x0F);
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.al(), 0xF0);
+        cpu.regs.ax = 0x0001;
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.ax, 0xFFFF);
+        assert!(cpu.regs.flags.carry);
+    }
+
+    #[test]
+    fn grp3_mul_unsigned_byte() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xF6, 0b11_100_011]); // MUL BL (reg=4, rm=3=BL)
+        let mut cpu = cpu();
+        cpu.regs.set_al(0x10);
+        cpu.regs.set_bl(0x10);
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.ax, 0x0100);
+        assert!(cpu.regs.flags.carry && cpu.regs.flags.overflow);
+    }
+
+    #[test]
+    fn grp3_mul_word_sets_dx() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xF7, 0b11_100_001]); // MUL CX (reg=4, rm=1=CX)
+        let mut cpu = cpu();
+        cpu.regs.ax = 0x1000;
+        cpu.regs.cx = 0x0010;
+        cpu.step(&mut bus);
+        assert_eq!((cpu.regs.dx, cpu.regs.ax), (0x0001, 0x0000));
+        assert!(cpu.regs.flags.carry);
+    }
+
+    #[test]
+    fn grp3_imul_signed_byte() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xF6, 0b11_101_011]); // IMUL BL (reg=5, rm=3=BL)
+        let mut cpu = cpu();
+        cpu.regs.set_al(0xFF); // -1
+        cpu.regs.set_bl(0x02); // 2
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.ax, 0xFFFE); // -2
+        assert!(!cpu.regs.flags.carry, "-2 fits in a byte");
+    }
+
+    #[test]
+    fn grp4_inc_memory_byte() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xFE, 0b00_000_111]); // INC byte [BX]
+        let mut cpu = cpu();
+        cpu.regs.ds = 0x2000;
+        cpu.regs.bx = 0x0010;
+        let addr = physical_address(0x2000, 0x0010);
+        bus.write_u8(addr, 0x7F);
+        cpu.step(&mut bus);
+        assert_eq!(bus.read_u8(addr), 0x80);
+        assert!(cpu.regs.flags.overflow, "0x7F+1 is a signed overflow");
+    }
+
+    #[test]
+    fn grp5_indirect_near_call() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xFF, 0b00_010_111]); // CALL [BX] (FF /2, rm=7=BX)
+        let mut cpu = cpu();
+        cpu.regs.ss = 0x3000;
+        cpu.regs.sp = 0x0100;
+        cpu.regs.ds = 0x2000;
+        cpu.regs.bx = 0x0040;
+        bus.write_u8(physical_address(0x2000, 0x0040), 0x00);
+        bus.write_u8(physical_address(0x2000, 0x0041), 0x12); // target 0x1200
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.ip, 0x1200);
+        assert_eq!(cpu.regs.sp, 0x00FE);
+    }
+
+    #[test]
+    fn grp5_push_memory_word() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xFF, 0b00_110_111]); // PUSH [BX] (FF /6, rm=7=BX)
+        let mut cpu = cpu();
+        cpu.regs.ss = 0x3000;
+        cpu.regs.sp = 0x0100;
+        cpu.regs.ds = 0x2000;
+        cpu.regs.bx = 0x0040;
+        bus.write_u8(physical_address(0x2000, 0x0040), 0xCD);
+        bus.write_u8(physical_address(0x2000, 0x0041), 0xAB);
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.sp, 0x00FE);
+        assert_eq!(bus.read_u8(physical_address(0x3000, 0x00FE)), 0xCD);
+        assert_eq!(bus.read_u8(physical_address(0x3000, 0x00FF)), 0xAB);
+    }
+
+    #[test]
+    fn div_is_deferred() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xF6, 0b11_110_011]); // DIV BL (reg=6) — not implemented yet
+        let mut cpu = cpu();
+        assert_eq!(cpu.step(&mut bus), Step::Unimplemented(0xF6));
     }
 }
