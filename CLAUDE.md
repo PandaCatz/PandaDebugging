@@ -87,6 +87,12 @@ and any frontend. This is **not** a playable emulator yet.
 - Git: local `main` pushed to `https://github.com/PandaCatz/PandaDebugging`
   (public). Push major milestones there; no Co-Authored-By / AI trailer;
   identity `PandaCatz <PandaCatz@users.noreply.github.com>`.
+- Milestones are tagged `v0.MINOR.0` (annotated) and cut as GitHub Releases:
+  v0.1.0 skeleton, v0.2.0 V30MZ set, v0.3.0 machine+IRQ, v0.4.0 V20-validated,
+  v0.5.0 community-bug fixes. Tag the next milestone the same way.
+- CI: `.github/workflows/ci.yml` runs the full required-commands gate (fmt,
+  clippy, debug+release tests, ws-cli smoke) on every push/PR on Rust 1.96.0.
+  Keep it green; a red CI is a red gate.
 
 ## Key open questions before writing CPU timing
 
