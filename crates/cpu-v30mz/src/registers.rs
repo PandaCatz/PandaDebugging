@@ -183,6 +183,84 @@ impl Registers {
     pub const fn stack_address(&self) -> u32 {
         physical_address(self.ss, self.sp)
     }
+
+    /// Read a 16-bit register by its 3-bit encoding
+    /// (0=AX 1=CX 2=DX 3=BX 4=SP 5=BP 6=SI 7=DI).
+    #[must_use]
+    pub const fn reg16(&self, index: u8) -> u16 {
+        match index & 7 {
+            0 => self.ax,
+            1 => self.cx,
+            2 => self.dx,
+            3 => self.bx,
+            4 => self.sp,
+            5 => self.bp,
+            6 => self.si,
+            _ => self.di,
+        }
+    }
+
+    pub const fn set_reg16(&mut self, index: u8, value: u16) {
+        match index & 7 {
+            0 => self.ax = value,
+            1 => self.cx = value,
+            2 => self.dx = value,
+            3 => self.bx = value,
+            4 => self.sp = value,
+            5 => self.bp = value,
+            6 => self.si = value,
+            _ => self.di = value,
+        }
+    }
+
+    /// Read an 8-bit register by its 3-bit encoding
+    /// (0=AL 1=CL 2=DL 3=BL 4=AH 5=CH 6=DH 7=BH).
+    #[must_use]
+    pub const fn reg8(&self, index: u8) -> u8 {
+        match index & 7 {
+            0 => self.al(),
+            1 => self.cl(),
+            2 => self.dl(),
+            3 => self.bl(),
+            4 => self.ah(),
+            5 => self.ch(),
+            6 => self.dh(),
+            _ => self.bh(),
+        }
+    }
+
+    pub const fn set_reg8(&mut self, index: u8, value: u8) {
+        match index & 7 {
+            0 => self.set_al(value),
+            1 => self.set_cl(value),
+            2 => self.set_dl(value),
+            3 => self.set_bl(value),
+            4 => self.set_ah(value),
+            5 => self.set_ch(value),
+            6 => self.set_dh(value),
+            _ => self.set_bh(value),
+        }
+    }
+
+    /// Read a segment register by its 2-bit encoding (0=ES 1=CS 2=SS 3=DS).
+    #[must_use]
+    pub const fn seg(&self, index: u8) -> u16 {
+        match index & 3 {
+            0 => self.es,
+            1 => self.cs,
+            2 => self.ss,
+            _ => self.ds,
+        }
+    }
+
+    pub const fn set_seg(&mut self, index: u8, value: u16) {
+        match index & 3 {
+            0 => self.es = value,
+            1 => self.cs = value,
+            2 => self.ss = value,
+            _ => self.ds = value,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -236,5 +314,27 @@ mod tests {
         // Setting reserved/mode bits (incl. MD at 15) must not invent flags.
         assert_eq!(Flags::from_word(0xF002), Flags::default());
         assert_eq!(Flags::from_word(0x7002), Flags::default());
+    }
+
+    #[test]
+    fn register_index_accessors_match_named_fields() {
+        let mut r = Registers::reset();
+        r.ax = 0x1122;
+        r.cx = 0x3344;
+        r.sp = 0x5566;
+        r.di = 0x7788;
+        assert_eq!(r.reg16(0), 0x1122, "AX");
+        assert_eq!(r.reg16(4), 0x5566, "SP");
+        assert_eq!(r.reg16(7), 0x7788, "DI");
+        assert_eq!(r.reg8(0), 0x22, "AL");
+        assert_eq!(r.reg8(4), 0x11, "AH");
+        assert_eq!(r.reg8(1), 0x44, "CL");
+        r.set_reg16(5, 0x9999); // BP
+        assert_eq!(r.bp, 0x9999);
+        r.set_reg8(4, 0xEE); // AH
+        assert_eq!(r.ah(), 0xEE);
+        assert_eq!(r.seg(1), 0xFFFF, "CS after reset");
+        r.set_seg(0, 0xABCD); // ES
+        assert_eq!(r.es, 0xABCD);
     }
 }

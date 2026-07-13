@@ -12,9 +12,11 @@
 //! the preamble of `docs/hardware/01-cpu-v30mz.md`. No cycle counts are baked in.
 
 pub mod bus;
+pub mod decode;
 pub mod registers;
 
 pub use bus::CpuBus;
+pub use decode::{ModRm, Rm};
 pub use registers::{Flags, Registers, physical_address};
 
 /// The processor: architectural state only. It reaches the outside world
