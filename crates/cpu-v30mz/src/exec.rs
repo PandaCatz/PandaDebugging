@@ -3,17 +3,18 @@
 //! coherent block with tests. **No cycle counting yet** — the master-vs-CPU
 //! cycle-unit question (see `docs/hardware/01-cpu-v30mz.md`) is unresolved.
 //!
-//! Implemented so far: segment-override / LOCK / REP prefixes; the ALU block
-//! (`ADD/OR/ADC/SBB/AND/SUB/XOR/CMP`, `0x00–0x3D`) and GRP1 immediate ALU
-//! (`0x80–0x83`); MOV (all forms, segment regs, `LEA`, moffs, imm); `XCHG`;
-//! `INC`/`DEC`; `TEST`; `CBW`/`CWD`; `SALC`; GRP3 `NOT`/`NEG`/`MUL`/`IMUL`;
-//! GRP4/5 (`INC`/`DEC` and indirect `CALL`/`JMP`/`PUSH` r/m); the stack ops
-//! (`PUSH`/`POP`, `PUSHF`/`POPF`); string ops + `REP` (`MOVS`/`STOS`/`LODS`/
-//! `CMPS`/`SCAS`); control flow (`Jcc`, `JMP`, `CALL`, `RET`, `LOOP`); and the
-//! flag / `NOP` / `HLT` opcodes.
+//! Implemented so far: the documented 8086/80186 instruction set as used on the
+//! V30MZ — ALU (+ GRP1/GRP3 groups), MOV/`XCHG`/`LEA`, `INC`/`DEC`, `TEST`,
+//! `CBW`/`CWD`, `SALC`, `MUL`/`IMUL`/`DIV`/`IDIV`, GRP2 shifts/rotates, GRP4/5
+//! (indirect `CALL`/`JMP`/`PUSH`), the stack ops, string ops + `REP`, control
+//! flow, `IN`/`OUT`, `INT`/`INTO`/`IRET` with the interrupt-delivery sequence,
+//! and the flag / `NOP` / `HLT` opcodes. Prefixes: segment override, `LOCK`,
+//! `REP`/`REPE`/`REPNE`.
 //!
-//! Not yet: GRP2 shifts/rotates, `DIV`/`IDIV` (need `#DE`), `INT`/`IRET` with
-//! interrupt delivery, and `IN`/`OUT`.
+//! Not yet: hardware IRQ delivery (the machine must consult
+//! `core-ws::InterruptController` before each step) and **all cycle timing**
+//! (blocked on the cycle-unit question). A few V30MZ-undocumented slots
+//! (e.g. `0xF1`) still report `Step::Unimplemented`.
 
 use crate::Cpu;
 use crate::alu;
@@ -411,12 +412,27 @@ impl Cpu {
                 let ax = self.regs.ax;
                 bus.io_write_u16(self.regs.dx, ax);
             }
-            // ---- group opcodes (GRP3 F6/F7, GRP4 FE, GRP5 FF) ----
-            0xF6 | 0xF7 => {
-                if !self.execute_grp3(bus, opcode, seg) {
-                    return Step::Unimplemented(opcode);
+            // ---- interrupts ----
+            0xCC => self.service_interrupt(bus, 3), // INT3
+            0xCD => {
+                let vector = self.fetch_u8(bus);
+                self.service_interrupt(bus, vector);
+            }
+            0xCE => {
+                // INTO: trap on overflow
+                if self.regs.flags.overflow {
+                    self.service_interrupt(bus, 4);
                 }
             }
+            0xCF => {
+                // IRET
+                self.regs.ip = self.pop16(bus);
+                self.regs.cs = self.pop16(bus);
+                let flags = self.pop16(bus);
+                self.regs.flags = crate::registers::Flags::from_word(flags);
+            }
+            // ---- group opcodes (GRP3 F6/F7, GRP4 FE, GRP5 FF) ----
+            0xF6 | 0xF7 => self.execute_grp3(bus, opcode, seg),
             0xFE => {
                 if !self.execute_grp4(bus, seg) {
                     return Step::Unimplemented(opcode);
@@ -537,9 +553,8 @@ impl Cpu {
         })
     }
 
-    /// GRP3 (`0xF6`/`0xF7`): TEST/NOT/NEG/MUL/IMUL. Returns `false` for the
-    /// deferred DIV/IDIV sub-ops (they need the `#DE` exception path).
-    fn execute_grp3(&mut self, bus: &mut dyn CpuBus, opcode: u8, seg: Option<u16>) -> bool {
+    /// GRP3 (`0xF6`/`0xF7`): TEST/NOT/NEG/MUL/IMUL/DIV/IDIV.
+    fn execute_grp3(&mut self, bus: &mut dyn CpuBus, opcode: u8, seg: Option<u16>) {
         let word = opcode & 1 == 1;
         let m = self.decode_modrm(bus, seg);
         match m.reg {
@@ -595,11 +610,26 @@ impl Cpu {
                     self.imul8(src);
                 }
             }
-            // DIV (6) / IDIV (7) raise #DE on error and thus need interrupt
-            // delivery, which is not implemented yet.
-            _ => return false,
+            6 => {
+                if word {
+                    let src = self.read_rm16(bus, m.rm);
+                    self.div16(bus, src);
+                } else {
+                    let src = self.read_rm8(bus, m.rm);
+                    self.div8(bus, src);
+                }
+            }
+            _ => {
+                // IDIV (7)
+                if word {
+                    let src = self.read_rm16(bus, m.rm);
+                    self.idiv16(bus, src);
+                } else {
+                    let src = self.read_rm8(bus, m.rm);
+                    self.idiv8(bus, src);
+                }
+            }
         }
-        true
     }
 
     /// GRP4 (`0xFE`): INC/DEC r/m8.
@@ -722,6 +752,95 @@ impl Cpu {
         let fits = (-32768..=32767).contains(&result);
         self.regs.flags.carry = !fits;
         self.regs.flags.overflow = !fits;
+    }
+
+    /// Deliver an interrupt/exception `vector`: push FLAGS, clear IF/TF, push
+    /// CS:IP, then load the handler from the IVT at physical `vector * 4`
+    /// (IP at `+0`, CS at `+2`). Wakes a halted CPU. Software `INT`, exceptions,
+    /// and (via the machine) hardware IRQs all funnel through here.
+    pub fn service_interrupt(&mut self, bus: &mut dyn CpuBus, vector: u8) {
+        let flags = self.regs.flags.to_word();
+        self.push16(bus, flags);
+        self.regs.flags.interrupt = false;
+        self.regs.flags.trap = false;
+        let (cs, ip) = (self.regs.cs, self.regs.ip);
+        self.push16(bus, cs);
+        self.push16(bus, ip);
+        let entry = u32::from(vector) * 4;
+        self.regs.ip = bus.read_u16(entry);
+        self.regs.cs = bus.read_u16(entry + 2);
+        self.halted = false;
+    }
+
+    /// Unsigned divide: `AL = AX / src`, `AH = AX % src`. Raises `#DE` on
+    /// divide-by-zero or quotient overflow (destination registers unchanged).
+    fn div8(&mut self, bus: &mut dyn CpuBus, src: u8) {
+        if src == 0 {
+            self.service_interrupt(bus, 0);
+            return;
+        }
+        let dividend = u32::from(self.regs.ax);
+        let quotient = dividend / u32::from(src);
+        if quotient > 0xFF {
+            self.service_interrupt(bus, 0);
+            return;
+        }
+        self.regs.set_al(quotient as u8);
+        self.regs.set_ah((dividend % u32::from(src)) as u8);
+    }
+
+    /// Unsigned divide: `AX = DX:AX / src`, `DX = DX:AX % src`.
+    fn div16(&mut self, bus: &mut dyn CpuBus, src: u16) {
+        if src == 0 {
+            self.service_interrupt(bus, 0);
+            return;
+        }
+        let dividend = (u32::from(self.regs.dx) << 16) | u32::from(self.regs.ax);
+        let quotient = dividend / u32::from(src);
+        if quotient > 0xFFFF {
+            self.service_interrupt(bus, 0);
+            return;
+        }
+        self.regs.ax = quotient as u16;
+        self.regs.dx = (dividend % u32::from(src)) as u16;
+    }
+
+    /// Signed divide (byte). Raises `#DE` on divide-by-zero or quotient overflow.
+    fn idiv8(&mut self, bus: &mut dyn CpuBus, src: u8) {
+        let divisor = i32::from(src as i8);
+        if divisor == 0 {
+            self.service_interrupt(bus, 0);
+            return;
+        }
+        let dividend = i32::from(self.regs.ax as i16);
+        let quotient = dividend / divisor;
+        if !(-128..=127).contains(&quotient) {
+            self.service_interrupt(bus, 0);
+            return;
+        }
+        self.regs.set_al(quotient as u8);
+        self.regs.set_ah((dividend % divisor) as u8);
+    }
+
+    /// Signed divide (word).
+    fn idiv16(&mut self, bus: &mut dyn CpuBus, src: u16) {
+        let divisor = i32::from(src as i16);
+        if divisor == 0 {
+            self.service_interrupt(bus, 0);
+            return;
+        }
+        let dividend = ((u32::from(self.regs.dx) << 16) | u32::from(self.regs.ax)) as i32;
+        // checked_div guards the INT_MIN / -1 overflow, which is also a #DE.
+        let Some(quotient) = dividend.checked_div(divisor) else {
+            self.service_interrupt(bus, 0);
+            return;
+        };
+        if !(-32768..=32767).contains(&quotient) {
+            self.service_interrupt(bus, 0);
+            return;
+        }
+        self.regs.ax = quotient as u16;
+        self.regs.dx = (dividend % divisor) as u16;
     }
 
     /// GRP2 (`C0/C1/D0/D1/D2/D3`): shifts and rotates.
@@ -1519,11 +1638,74 @@ mod tests {
     }
 
     #[test]
-    fn div_is_deferred() {
+    fn div8_quotient_and_remainder() {
         let mut bus = TestBus::new();
-        bus.load(0, &[0xF6, 0b11_110_011]); // DIV BL (reg=6) — not implemented yet
+        bus.load(0, &[0xF6, 0b11_110_011]); // DIV BL (reg=6, rm=3=BL)
         let mut cpu = cpu();
-        assert_eq!(cpu.step(&mut bus), Step::Unimplemented(0xF6));
+        cpu.regs.ax = 0x0011; // 17
+        cpu.regs.set_bl(0x05); // 5
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.al(), 3); // quotient
+        assert_eq!(cpu.regs.ah(), 2); // remainder
+    }
+
+    #[test]
+    fn idiv8_signed() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xF6, 0b11_111_011]); // IDIV BL (reg=7, rm=3=BL)
+        let mut cpu = cpu();
+        cpu.regs.ax = 0xFFF7; // -9
+        cpu.regs.set_bl(0x02); // 2
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.al() as i8, -4); // -9 / 2 truncates toward zero
+        assert_eq!(cpu.regs.ah() as i8, -1); // remainder -1
+    }
+
+    #[test]
+    fn divide_by_zero_vectors_through_int0() {
+        let mut bus = TestBus::new();
+        bus.load(0x1000, &[0xF6, 0b11_110_011]); // DIV BL at 0x0100:0x0000
+        // IVT entry 0 at physical 0: IP=0x1234, CS=0x8000
+        bus.write_u8(0, 0x34);
+        bus.write_u8(1, 0x12);
+        bus.write_u8(2, 0x00);
+        bus.write_u8(3, 0x80);
+        let mut cpu = cpu();
+        cpu.regs.cs = 0x0100;
+        cpu.regs.ss = 0x3000;
+        cpu.regs.sp = 0x0100;
+        cpu.regs.ax = 0x0011;
+        cpu.regs.set_bl(0x00);
+        cpu.step(&mut bus);
+        assert_eq!((cpu.regs.cs, cpu.regs.ip), (0x8000, 0x1234));
+        assert_eq!(cpu.regs.sp, 0x00FA, "pushed FLAGS + CS + IP");
+    }
+
+    #[test]
+    fn int_and_iret_roundtrip() {
+        let mut bus = TestBus::new();
+        bus.load(0x1000, &[0xCD, 0x21]); // INT 0x21 at 0x0100:0x0000
+        // IVT entry 0x21 at physical 0x84: IP=0x2000, CS=0x9000
+        bus.write_u8(0x84, 0x00);
+        bus.write_u8(0x85, 0x20);
+        bus.write_u8(0x86, 0x00);
+        bus.write_u8(0x87, 0x90);
+        bus.write_u8(physical_address(0x9000, 0x2000), 0xCF); // IRET handler
+        let mut cpu = cpu();
+        cpu.regs.cs = 0x0100;
+        cpu.regs.ss = 0x3000;
+        cpu.regs.sp = 0x0100;
+        cpu.regs.flags.interrupt = true;
+        cpu.regs.flags.carry = true;
+        cpu.step(&mut bus); // INT 0x21
+        assert_eq!((cpu.regs.cs, cpu.regs.ip), (0x9000, 0x2000));
+        assert!(!cpu.regs.flags.interrupt, "IF cleared on entry");
+        cpu.step(&mut bus); // IRET
+        assert_eq!((cpu.regs.cs, cpu.regs.ip), (0x0100, 0x0002));
+        assert!(
+            cpu.regs.flags.carry && cpu.regs.flags.interrupt,
+            "flags restored"
+        );
     }
 
     #[test]
