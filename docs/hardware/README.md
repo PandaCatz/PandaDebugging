@@ -6,12 +6,16 @@ every behaviour and flag anything still unverified as an open question.
 
 - [`00-overview.md`](00-overview.md) — SoC family, bug map, priority fix order,
   and a distilled reference for every subsystem. **Read first.**
+- [`01-cpu-v30mz.md`](01-cpu-v30mz.md) — opcode map, cycle timing, flags/
+  arithmetic/exceptions, memory & I/O map, and the CPU test-ROM validation plan.
+  Web-enriched and adversarially fact-checked; unverified items are in its
+  appendix. **Read its preamble before implementing timing** (the master-vs-CPU
+  cycle-unit question is unresolved and scales all timings by 4×).
+- [`02-interrupts.md`](02-interrupts.md) — line table, priority dispatch, edge/
+  level semantics, `REG_INT_*`, and IRQ-timing watch items.
 
 Planned (added as each phase begins):
 
-- `01-cpu-v30mz.md` — opcode set, `SALC`, cycle timings, IN/OUT cost, flags,
-  division exceptions, LFSR-as-cycle-counter method.
-- `02-interrupts.md` — line table, priority dispatch, edge/level, `REG_INT_*`.
 - `03-ppu-display.md` — scanline timing, sprite DMA @142, palette pool,
   color-zero rules, `REG_LCD_VTOTAL`, WSC tile bank.
 - `04-apu-sound.md` — channels, unsigned mixing, sweep, noise taps, startup

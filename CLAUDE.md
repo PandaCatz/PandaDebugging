@@ -61,7 +61,26 @@ devices, the BIOS boot path, save/state, and any frontend. This crate set is
   bit-priority ordering (HBLANK_TMR highest), edge-vs-level trigger table, and
   ack-clears-edge-only / lower-clears-level-only semantics.
 - Wrote the legal provenance policy, the phased roadmap, and the architecture
-  baseline. Initialised a local git repo (branch `main`, no remote).
+  baseline.
+- Ran a six-agent, adversarially-verified research pass into the Phase-2 CPU
+  spec: `docs/hardware/01-cpu-v30mz.md` (opcodes, timing, flags/exceptions,
+  memory & I/O map, validation plan) and `02-interrupts.md`. Definitive fixes
+  folded into the bodies; unverified items collected in each doc's appendix.
+- Git: local `main` pushed to `https://github.com/PandaCatz/PandaDebugging`
+  (public). Push major milestones there; no Co-Authored-By / AI trailer;
+  identity `PandaCatz <PandaCatz@users.noreply.github.com>`.
+
+## Key open questions before writing CPU timing
+
+- **Cycle-unit ambiguity (blocker for timing literals):** unknown whether the
+  LFSR cycle-counter ticks at 12.288 MHz (master) or 3.072 MHz (CPU). Resolve by
+  measuring a known-`n` DMA before baking any timing constant.
+- `IN`/`OUT` cost: WSdev table says 6 core cycles; the deep-dive says 12. Do not
+  hardcode either — parameterize and measure.
+- Post-DIV/IDIV flag state and `#DE` return-address semantics: implementation-
+  specific; confirm against WSCpuTest on both ASWAN and SPHINX.
+- Several WSMan/Sacred-Tech-Scroll facts were confirmed via WSdev/ARMV30MZ/ares
+  because the HTTP-only primaries refused HTTPS; re-verify over plain HTTP.
 
 ## Required commands
 

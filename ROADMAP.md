@@ -32,6 +32,11 @@ and recorded; 23 tests pass in debug and release.
 
 Fixes deep-dive priority **#1 (interrupt timing)** and **#7 (I/O port timing)**.
 
+- [x] Verified CPU + interrupt spec written: `docs/hardware/01-cpu-v30mz.md`,
+  `02-interrupts.md` (adversarially fact-checked; open questions in appendices).
+- [ ] Resolve the cycle-unit ambiguity (master vs CPU clock) before baking any
+  timing literal — see the 01 preamble.
+
 1. `cpu-v30mz` crate: 80186-compatible core with the `SALC` opcode, without the
    V20/V30 REPC/REPNC extensions. Trace-first bus interface; generated opcode
    unit tests.
