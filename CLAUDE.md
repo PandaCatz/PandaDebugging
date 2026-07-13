@@ -44,13 +44,15 @@ Phase 1 (headless skeleton) is complete and green. The workspace contains:
   20-bit segmented addressing, `CS:IP = FFFF:0000` reset, the trace-first
   `CpuBus`, instruction fetch, ModR/M decode (all 16-bit modes + segment
   override), the ALU (8/16-bit, full flag semantics), and a `step()` executor
-  running most of the instruction set: ALU + GRP1 immediate, MOV (all forms/seg/
-  LEA/moffs/imm), XCHG, INC/DEC, TEST, CBW/CWD, SALC, GRP3 NOT/NEG/MUL/IMUL,
-  GRP4/5 (INC/DEC and indirect CALL/JMP/PUSH), stack (PUSH/POP/PUSHF/POPF),
-  string ops + REP (MOVS/STOS/LODS/CMPS/SCAS), control flow (Jcc/JMP/CALL/RET/
-  LOOP), IN/OUT, and flag/NOP/HLT.
-  Remaining: GRP2 shifts/rotates, DIV/IDIV (need #DE), INT/IRET + interrupt
-  delivery — and **no timing** yet (blocked on the cycle-unit question).
+  running the **full documented 8086/80186 instruction set** as used on the
+  V30MZ: ALU (+ GRP1/GRP3), MOV/XCHG/LEA, INC/DEC, TEST, CBW/CWD, SALC,
+  MUL/IMUL/DIV/IDIV, GRP2 shifts/rotates, GRP4/5 (indirect CALL/JMP/PUSH), stack,
+  string ops + REP, control flow, IN/OUT, INT/INTO/IRET with the interrupt-
+  delivery sequence (service_interrupt, IVT at physical vector*4), and
+  flag/NOP/HLT.
+  Remaining: hardware IRQ delivery (the machine must consult
+  core-ws::InterruptController before each step), a few V30MZ-undocumented slots
+  (e.g. 0xF1), and **all cycle timing** (blocked on the cycle-unit question).
 - `core-ws`: cartridge ownership boundary + I/O register map (doc-cited
   addresses) + a fully unit-tested interrupt-controller model (8 lines,
   edge-vs-level semantics, bit-priority selection, relocatable vector base).
@@ -112,9 +114,9 @@ Verified on Windows x86-64 with Rust/Cargo 1.96.0 on 2026-07-13:
 
 - `cargo fmt --all -- --check` — pass.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — pass.
-- `cargo test --workspace --all-targets --all-features` — 94 passed, 0 failed
-  (cpu-v30mz 71, core-ws 9, format-ws 6, ws-testkit 5, ws-contracts 3, ws-cli 0).
-- `cargo test --release --workspace` — 94 passed, 0 failed.
+- `cargo test --workspace --all-targets --all-features` — 108 passed, 0 failed
+  (cpu-v30mz 85, core-ws 9, format-ws 6, ws-testkit 5, ws-contracts 3, ws-cli 0).
+- `cargo test --release --workspace` — 108 passed, 0 failed.
 - `cargo run --release -p ws-cli` — synthetic baseline:
   - final tick: `30`
   - video: `3` frames, hash `2d1f1e3d37030229`
@@ -126,14 +128,15 @@ Verified on Windows x86-64 with Rust/Cargo 1.96.0 on 2026-07-13:
 See `ROADMAP.md` for the full phase plan and exit gates. Immediate Phase 0/2
 work:
 
-1. Finish the `cpu-v30mz` opcode table: GRP2 shifts/rotates (mind the 8086-vs-
-   186 count-mask question — verify vs WSCpuTest), `DIV`/`IDIV`, and
-   `INT`/`INTO`/`IRET` with the interrupt-delivery sequence (push flags/CS/IP,
-   clear IF/TF, vector via `REG_INT_BASE`) — this wires in
-   `core-ws::InterruptController` and unblocks `#DE` for DIV. Then run WSCpuTest
-   headless. Keep timing out until the cycle-unit question is resolved.
-   (Most of the set — ALU/GRP1/3/4/5, MOV, stack, strings, control flow, IN/OUT
-   — already done.)
+1. Build the headless test-ROM runner in `ws-testkit` and acquire WSCpuTest
+   (auto-runs on boot); run it against `cpu-v30mz` and fix divergences. This is
+   the first real accuracy signal — it validates the GRP2 count-mask choice, the
+   MUL/DIV undefined-flag choices, and the flag semantics broadly.
+2. Give `core-ws` a machine that owns a `Cpu` + RAM/ROM + the interrupt
+   controller, and delivers hardware IRQs (consult `pending_enabled()` gated by
+   the CPU `IF`, call `Cpu::service_interrupt`) before each step.
+3. Resolve the cycle-unit ambiguity (LFSR/DMA measurement) and only then add
+   per-instruction timing.
 2. Add the interrupt-delivery sequence and wire `core-ws::InterruptController`
    to the CPU (IVT at `REG_INT_BASE`, push flags/CS/IP, clear IF/TF).
 3. Acquire the hardware test ROMs into gitignored `fixtures/` (`docs/TEST_ROMS.md`)
