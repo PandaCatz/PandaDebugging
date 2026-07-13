@@ -18,6 +18,7 @@
 
 pub mod apu;
 pub mod cartridge;
+pub mod eeprom;
 pub mod interrupt;
 pub mod io;
 pub mod machine;
@@ -25,6 +26,7 @@ pub mod serial;
 
 pub use apu::{NoiseChannel, NoiseLfsr};
 pub use cartridge::{CartridgeError, WsCartridge};
+pub use eeprom::InternalEeprom;
 pub use interrupt::{InterruptController, Irq, Trigger};
 pub use machine::{Bus, Machine};
 pub use serial::Serial;

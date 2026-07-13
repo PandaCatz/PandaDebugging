@@ -21,7 +21,7 @@ Status: ✅ implemented + tested · 🔨 partial · ⬜ pending
 | 5 | **Monochrome palette pool** | mapping palettes straight to 16 greys instead of the two-stage pool → wrong shading | ⬜ pending (needs the PPU palette model) |
 | 6 | **Color-zero palette behaviour** | forcing palette index 0 transparent in colour mode; missing the writable translucent-palette / `REG_BACK_COLOR` cases | ⬜ pending (needs the PPU palette model) |
 | 7 | **I/O port access timing** | `IN`/`OUT` completing in too few cycles (should be ~12, not 10) | 🔨 `IN`/`OUT` data behaviour done + V20-validated; the cycle *cost* is pending (cycle-unit question open — see `docs/hardware/01-cpu-v30mz.md`) |
-| 8 | **Internal EEPROM size detection** | always presenting one EEPROM size → games mis-detect WS vs WSC | ⬜ pending (needs the internal-EEPROM model) |
+| 8 | **Internal EEPROM size detection** | always presenting one EEPROM size → games mis-detect WS vs WSC | ✅ `core-ws::eeprom` — 512-bit (WS) vs 16 Kbit / 93C86 (WSC) sizing, size-probe detectable via address aliasing; tested |
 | 9 | **8-bit ROM bus width** | hardcoding a 16-bit bus → corrupt data on Pocket Challenge V2 and early carts | ⬜ pending (`format-ws` decodes `REG_HW_FLAGS` bit 2; cart bus model) |
 
 ## How to read this
