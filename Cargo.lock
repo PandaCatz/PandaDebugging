@@ -10,6 +10,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "cpu-v30mz"
+version = "0.1.0"
+
+[[package]]
 name = "format-ws"
 version = "0.1.0"
 

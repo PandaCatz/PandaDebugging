@@ -2,6 +2,7 @@
 members = [
     "crates/ws-contracts",
     "crates/format-ws",
+    "crates/cpu-v30mz",
     "crates/core-ws",
     "crates/ws-testkit",
     "crates/ws-cli",

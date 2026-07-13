@@ -40,16 +40,21 @@ Phase 1 (headless skeleton) is complete and green. The workspace contains:
 - `format-ws`: defensive borrowed ROM parser. Structural validation, footer
   extraction, stored/provisional checksum. Exact header-field offsets are
   deliberately *not yet decoded* (Phase 0 task) rather than guessed.
+- `cpu-v30mz`: register file, flags (defined bits; MD read-back left open),
+  20-bit segmented addressing, the confirmed `CS:IP = FFFF:0000` reset state,
+  the trace-first `CpuBus` interface, and instruction-stream fetch. No decode,
+  no execution, and **no timing** yet (blocked on the cycle-unit question).
 - `core-ws`: cartridge ownership boundary + I/O register map (doc-cited
   addresses) + a fully unit-tested interrupt-controller model (8 lines,
   edge-vs-level semantics, bit-priority selection, relocatable vector base).
 - `ws-testkit`: deterministic synthetic core, capture sink, stable FNV-64 hashes.
 - `ws-cli`: headless synthetic run + `--rom` inspector (no ROM bytes logged).
 
-Not implemented yet: the NEC V30MZ CPU, the memory bus and access-slot model, the
-PPU, the APU, the general-purpose and sound DMA engines, EEPROM/RTC/serial
-devices, the BIOS boot path, save/state, and any frontend. This crate set is
-**not** a running WonderSwan core.
+Not implemented yet: the V30MZ opcode decoder/executor and interrupt-delivery
+sequence, the memory bus and access-slot model, the PPU, the APU, the
+general-purpose and sound DMA engines, EEPROM/RTC/serial devices, the BIOS boot
+path, save/state, and any frontend. This crate set is **not** a running
+WonderSwan core.
 
 ## Completed work
 
@@ -100,9 +105,9 @@ Verified on Windows x86-64 with Rust/Cargo 1.96.0 on 2026-07-13:
 
 - `cargo fmt --all -- --check` — pass.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — pass.
-- `cargo test --workspace --all-targets --all-features` — 23 passed, 0 failed
-  (core-ws 9, format-ws 6, ws-contracts 3, ws-testkit 5, ws-cli 0).
-- `cargo test --release --workspace` — 23 passed, 0 failed.
+- `cargo test --workspace --all-targets --all-features` — 31 passed, 0 failed
+  (core-ws 9, cpu-v30mz 8, format-ws 6, ws-testkit 5, ws-contracts 3, ws-cli 0).
+- `cargo test --release --workspace` — 31 passed, 0 failed.
 - `cargo run --release -p ws-cli` — synthetic baseline:
   - final tick: `30`
   - video: `3` frames, hash `2d1f1e3d37030229`
@@ -114,15 +119,18 @@ Verified on Windows x86-64 with Rust/Cargo 1.96.0 on 2026-07-13:
 See `ROADMAP.md` for the full phase plan and exit gates. Immediate Phase 0/2
 work:
 
-1. Transcribe the ROM header field layout from WSMan and decode it in
-   `format-ws` (publisher, game id, ROM/SRAM size codes, flags, RTC, bus width),
-   with oversize/truncation tests.
-2. Record the acceptance matrix and acquire the hardware test ROMs into the
-   gitignored `fixtures/` (see `docs/TEST_ROMS.md`).
-3. Implement the NEC V30MZ CPU (`cpu-v30mz`) with a trace-first bus interface and
-   generated opcode tests; validate cycle counts against WSCpuTest / WSTimingTest.
-4. Wire the interrupt controller to the bus and validate priority + edge/level
-   timing against WSHWTest.
+1. Implement the V30MZ opcode decoder + executor in `cpu-v30mz` (ModR/M decode,
+   the documented 8086/80186 set, `SALC`, group opcodes, string/REP), with
+   generated per-opcode semantic tests. Follow `docs/hardware/01-cpu-v30mz.md`;
+   keep timing out until the cycle-unit question is resolved.
+2. Add the interrupt-delivery sequence and wire `core-ws::InterruptController`
+   to the CPU (IVT at `REG_INT_BASE`, push flags/CS/IP, clear IF/TF).
+3. Acquire the hardware test ROMs into gitignored `fixtures/` (`docs/TEST_ROMS.md`)
+   and stand up the headless test-ROM runner in `ws-testkit`; validate opcodes
+   against WSCpuTest (auto-runs on boot) and interrupts against WSHWTest.
+4. Resolve the cycle-unit ambiguity via an LFSR/DMA measurement, then add timing.
+5. Transcribe and decode the ROM header fields in `format-ws` (Phase 0), with
+   oversize/truncation tests.
 
 ## Decisions still open
 
