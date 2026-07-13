@@ -17,7 +17,7 @@ The point of this project is to fix the
 Mednafen/Beetle, ares, Oswan, and Swan.emu. Every fix ships with a named test
 pinning the behaviour those emulators get wrong.
 
-**4 fixed · 2 partial · 3 remaining** (of 9)
+**5 fixed · 2 partial · 2 remaining** (of 9)
 
 | # | Documented bug | Status |
 |---|----------------|--------|
@@ -27,8 +27,8 @@ pinning the behaviour those emulators get wrong.
 | 8 | Internal EEPROM size → **WS/WSC mis-detection** | ✅ **fixed** (`core-ws::eeprom`) |
 | 1 | V30MZ interrupt handling (priority, edge/level, relocatable IVT) | 🔨 behaviour done + CPU V20-validated; cycle timing pending |
 | 7 | I/O port access timing (`IN`/`OUT` ≈ 12 cycles) | 🔨 data validated; cycle cost pending |
-| 6 | Color-zero palette behaviour | ⬜ next |
-| 2 | Sprite DMA at line 142 (`5 + 2n`) → **tearing** | ⬜ needs the scanline PPU |
+| 6 | Color-zero palette behaviour | ✅ **fixed** (`core-ws::palette`) |
+| 2 | Sprite DMA at line 142 (`5 + 2n`) → **tearing** | ⬜ next — needs the scanline PPU |
 | 9 | 8-bit ROM bus width (Pocket Challenge V2, early carts) | ⬜ needs the cart bus model |
 
 Per-bug detail and the proving tests are in
@@ -37,8 +37,8 @@ Per-bug detail and the proving tests are in
 ## Status
 
 **Current focus:** fixing the documented community bugs (scorecard above). The
-V30MZ CPU is complete and hardware-validated; next up are color-zero (#6) and the
-scanline PPU for sprite-DMA tearing (#2).
+V30MZ CPU is complete and hardware-validated; next up is the scanline PPU for
+sprite-DMA tearing (#2).
 
 Verified on Rust/Cargo 1.96.0 (Windows x86-64): `cargo fmt --check`,
 `cargo clippy --all-targets -- -D warnings`, and **124 tests** all pass in debug
@@ -54,7 +54,7 @@ instruction or an officially-undefined flag. See
 | 0 | Charter, toolchain, fixtures, provenance | 🔨 in progress (toolchain + provenance done; ROM-header decode & test-ROM acquisition pending) |
 | 1 | Headless skeleton (contracts, parser, testkit, CLI) | ✅ complete |
 | 2 | V30MZ CPU + interrupt/bus timing | 🔨 CPU runs the **full documented 8086/80186 set** and is **V20-validated** (zero defined-behaviour bugs); machine + hardware-IRQ delivery done. Remaining: real memory map, WSCpuTest, cycle-unit → timing |
-| 3 | PPU / display (sprite DMA @142, palettes, color-zero) | 🔨 mono palette pool (#5) done; color-zero (#6) and sprite-DMA-@142 (#2) pending |
+| 3 | PPU / display (sprite DMA @142, palettes, color-zero) | 🔨 palette pool (#5) and color-zero (#6) done; sprite-DMA-@142 (#2) pending |
 | 4 | APU / sound (unsigned mixing, LFSR-in-wave-mode, sweep) | 🔨 noise LFSR in wave mode (#4) done; unsigned mixing, sweep, HyperVoice pending |
 | 5 | DMA / SDMA (`5 + 2n`, CPU halt, cart-SRAM source) | ⬜ planned |
 | 6 | Cartridge / EEPROM / RTC / serial / bus width / input | 🔨 internal EEPROM (#8) and serial/UART (#3) done; RTC, 8-bit bus width (#9), input pending |

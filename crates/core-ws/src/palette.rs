@@ -63,6 +63,39 @@ impl Default for MonoPalettes {
     }
 }
 
+/// Display mode, which governs the colour-zero transparency rule.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DisplayMode {
+    /// Mono (ASWAN / WS-compatibility mode).
+    Mono,
+    /// Colour (WSC / SwanCrystal).
+    Color,
+}
+
+/// Whether colour index 0 is transparent for `palette` under `mode`.
+///
+/// **Community bug #6 (deep-dive / WSMan):** forcing index 0 transparent for
+/// every colour-mode palette renders certain WSC backgrounds wrong (ares fixed
+/// this in v144). The correct rules:
+/// - **Mono:** palettes 0–3 and 8–11 are opaque (index 0 is *not* transparent);
+///   palettes 4–7 and 12–15 use index 0 as transparency.
+/// - **Colour:** every palette treats index 0 as transparent — *except* when the
+///   colour is drawn through `REG_BACK_COLOR`, which shows index 0 opaque.
+///
+/// The colour-0 palette entry is always writable/stored regardless (that is the
+/// other half of the ares fix); this decides only whether it is *drawn*.
+#[must_use]
+pub const fn color_zero_transparent(mode: DisplayMode, palette: u8, as_back_color: bool) -> bool {
+    if as_back_color {
+        return false; // REG_BACK_COLOR displays index 0 opaque
+    }
+    match mode {
+        // Palettes 4–7 and 12–15 (bit 2 set) use index 0 as transparency.
+        DisplayMode::Mono => palette & 0x04 != 0,
+        DisplayMode::Color => true,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,5 +133,41 @@ mod tests {
         pal.write_palette(0, 0xFF); // both colours = 0x7 after masking to 3 bits
         assert_eq!(pal.pool_index(0, 0), 7);
         assert_eq!(pal.pool_index(0, 1), 7);
+    }
+
+    /// Community bug #6: mono colour-zero transparency depends on the palette.
+    #[test]
+    fn mono_color_zero_transparency_by_palette() {
+        for p in [0u8, 1, 2, 3, 8, 9, 10, 11] {
+            assert!(
+                !color_zero_transparent(DisplayMode::Mono, p, false),
+                "mono palette {p}: index 0 is opaque"
+            );
+        }
+        for p in [4u8, 5, 6, 7, 12, 13, 14, 15] {
+            assert!(
+                color_zero_transparent(DisplayMode::Mono, p, false),
+                "mono palette {p}: index 0 is transparent"
+            );
+        }
+    }
+
+    /// Community bug #6: colour mode is all-transparent except the back colour.
+    #[test]
+    fn color_mode_all_transparent_except_back_color() {
+        for p in 0..16u8 {
+            assert!(
+                color_zero_transparent(DisplayMode::Color, p, false),
+                "colour palette {p}: index 0 transparent"
+            );
+        }
+        assert!(
+            !color_zero_transparent(DisplayMode::Color, 0, true),
+            "REG_BACK_COLOR shows index 0 opaque"
+        );
+        assert!(
+            !color_zero_transparent(DisplayMode::Mono, 5, true),
+            "back colour is opaque in mono too"
+        );
     }
 }
