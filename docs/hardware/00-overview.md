@@ -20,7 +20,8 @@ Unmapped I/O reads return `$90` on WS and `$00` on WSC.
 ## Priority bug-fix order (drives the roadmap)
 
 1. V30MZ interrupt timing — affects nearly every audio/raster game.
-2. Sprite DMA at line 142 with `5 + 2n` timing — eliminates tearing.
+2. Sprite DMA double-buffered near line 142/144 — eliminates tearing (exact
+   copy timing is unknown per WSMan).
 3. UART IRQ clearing on serial disable — prevents startup lockups.
 4. Noise LFSR continues in wave mode — fixes Clock Tower and others.
 5. Monochrome palette pool indirection — correct WS visuals.
@@ -63,10 +64,14 @@ deadlocks serial-driven games.
 - 12.288 MHz split into 4 memory access slots (CPU/DMA/wavetable/tile/palette).
   CPU is **not** stalled during PPU access.
 - `HDISP 224 + HBLANK 32 = 256`; `VDISP 144 + VBLANK 15 = 159` → ~75.47 Hz.
-- **Sprite DMA**: OAM copied SRAM→sprite RAM at the **start of line 142**, taking
-  `5 + 2n` cycles, ending near VBlank; lock sprite-table writes until done.
-- **Color-zero**: mono palettes 0–3 & 8–11 opaque (color 0 not transparent),
-  4–7 & 12–15 use color 0 as transparent. Color mode: all palettes treat color 0
+- **Sprite DMA**: OAM (in **internal work RAM**, not cart SRAM) is copied to the
+  internal sprite RAM and **double-buffered for the next frame**. Copy scanline
+  is a source split — WSMan/Mednafen say 142, WSdev/ares say 144 — and WSMan says
+  the copy **timing is unknown** (`5+2n`=517 was a bad transcription; WSdev/ares
+  estimate ~256 dot-clocks). It appears to pause the CPU during the copy.
+- **Color-zero** (rule keys on **bit depth**, not mono/colour): at 2bpp, palettes
+  0–3 & 8–11 are opaque (color 0 not transparent), 4–7 & 12–15 use color 0 as
+  transparent; at 4bpp (16-colour) all palettes treat color 0
   as transparent **except** via `REG_BACK_COLOR`. Color 0 writable on translucent
   palettes (ares v144 fix).
 - **`REG_LCD_VTOTAL` (`$016`)** writable: 255 blanks display; <144 stops VBlank

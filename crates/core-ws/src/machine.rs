@@ -104,9 +104,10 @@ impl Machine {
         {
             let vector = self.bus.interrupts.vector(irq);
             self.cpu.service_interrupt(&mut self.bus, vector);
-            // Edge lines are cleared here; level lines re-assert from their
-            // source until it is resolved.
-            self.bus.interrupts.acknowledge(irq.bit());
+            // No auto-ack: hardware requires the ISR to write REG_INT_ACK ($B6)
+            // to clear edge lines. service_interrupt clears IF, so the line will
+            // not re-fire until the ISR re-enables IF (by which point a
+            // well-behaved handler has acked).
         }
         self.cpu.step(&mut self.bus)
     }
@@ -132,10 +133,11 @@ mod tests {
     }
 
     #[test]
-    fn hardware_irq_is_delivered_and_handled() {
+    fn hardware_irq_delivered_acked_and_returns() {
         let mut m = Machine::new();
         m.load(0x0100, &[0x90, 0x90, 0xF4]); // main: NOP; NOP; HLT
-        m.load(0x0200, &[0xB0, 0x99, 0xCF]); // handler: MOV AL,0x99 ; IRET
+        // handler: MOV AL,0x40 ; OUT 0xB6,AL (ack Vblank) ; IRET
+        m.load(0x0200, &[0xB0, 0x40, 0xE6, 0xB6, 0xCF]);
         m.interrupts_mut().set_base(0x20); // Vblank (bit 6) -> vector 0x26
         m.load(0x26 * 4, &[0x00, 0x02, 0x00, 0x00]); // IVT[0x26] = 0000:0200
         seed_cpu(&mut m, 0x0100);
@@ -143,11 +145,18 @@ mod tests {
         m.interrupts_mut().set_enable(Irq::Vblank.bit());
         m.interrupts_mut().raise(Irq::Vblank);
 
-        m.step(); // deliver IRQ, then run handler's MOV AL,0x99
-        assert_eq!(m.cpu().regs.al(), 0x99, "handler ran");
+        m.step(); // deliver IRQ, then run handler's MOV AL,0x40
+        assert_eq!(m.cpu().regs.al(), 0x40, "handler ran");
         assert!(
             !m.cpu().regs.flags.interrupt,
             "IF cleared inside the handler"
+        );
+
+        m.step(); // OUT 0xB6,AL -> ISR acknowledges the line
+        assert_eq!(
+            m.interrupts_mut().status() & Irq::Vblank.bit(),
+            0,
+            "the ISR acked the edge line via REG_INT_ACK"
         );
 
         m.step(); // IRET back to main
@@ -157,6 +166,9 @@ mod tests {
             "returned to the interrupted program"
         );
         assert!(m.cpu().regs.flags.interrupt, "IF restored by IRET");
+
+        m.step(); // no re-delivery: main NOP runs
+        assert_eq!(m.cpu().regs.ip, 0x0101, "no spurious re-delivery after ack");
     }
 
     #[test]

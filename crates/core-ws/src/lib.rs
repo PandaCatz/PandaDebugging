@@ -31,6 +31,6 @@ pub use cartridge::{CartridgeError, WsCartridge};
 pub use eeprom::InternalEeprom;
 pub use interrupt::{InterruptController, Irq, Trigger};
 pub use machine::{Bus, Machine};
-pub use palette::{DisplayMode, MonoPalettes, color_zero_transparent};
+pub use palette::{Depth, MonoPalettes, color_zero_transparent};
 pub use ppu::SpriteUnit;
 pub use serial::Serial;

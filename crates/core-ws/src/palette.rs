@@ -39,7 +39,12 @@ impl MonoPalettes {
     pub const fn write_palette(&mut self, reg: usize, value: u8) {
         let palette = reg / 2;
         let base = (reg % 2) * 2;
-        self.palettes[palette][base] = value & 0x07;
+        // Colour 0 of palettes 4-7 and 12-15 is non-writable — it is the
+        // transparency colour and always reads 0 (ares guards this exactly as
+        // `(address & 0x9) != 0x8`).
+        if !(base == 0 && palette & 0x04 != 0) {
+            self.palettes[palette][base] = value & 0x07;
+        }
         self.palettes[palette][base + 1] = (value >> 4) & 0x07;
     }
 
@@ -63,36 +68,38 @@ impl Default for MonoPalettes {
     }
 }
 
-/// Display mode, which governs the colour-zero transparency rule.
+/// Tile colour depth (`DISP_MODE` bit 7), which governs the colour-zero
+/// transparency rule — *independently* of whether the display is mono or colour
+/// (`DISP_MODE` bit 6). A 2bpp **colour** background still uses the 2bpp rule.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DisplayMode {
-    /// Mono (ASWAN / WS-compatibility mode).
-    Mono,
-    /// Colour (WSC / SwanCrystal).
-    Color,
+pub enum Depth {
+    /// 2 bits per pixel (4 colours per tile) — "standard palette" mode.
+    TwoBpp,
+    /// 4 bits per pixel (16 colours per tile) — "sixteen colour" mode.
+    FourBpp,
 }
 
-/// Whether colour index 0 is transparent for `palette` under `mode`.
+/// Whether colour index 0 is transparent for `palette` at pixel `depth`.
 ///
-/// **Community bug #6 (deep-dive / WSMan):** forcing index 0 transparent for
-/// every colour-mode palette renders certain WSC backgrounds wrong (ares fixed
-/// this in v144). The correct rules:
-/// - **Mono:** palettes 0–3 and 8–11 are opaque (index 0 is *not* transparent);
-///   palettes 4–7 and 12–15 use index 0 as transparency.
-/// - **Colour:** every palette treats index 0 as transparent — *except* when the
-///   colour is drawn through `REG_BACK_COLOR`, which shows index 0 opaque.
+/// **Community bug #6:** transparency depends on the tile colour **depth**, not
+/// on mono-vs-colour. Forcing index 0 transparent for every colour-mode palette
+/// mis-renders WSC backgrounds drawn in 2bpp colour mode. Rules (WSdev Display;
+/// ares `ppu` `opaque()` is `depth == 2 && !palette.bit(2)`):
+/// - **2bpp:** palettes 0–3 and 8–11 are opaque (index 0 *not* transparent);
+///   palettes 4–7 and 12–15 use index 0 as transparency — in both mono *and*
+///   colour displays.
+/// - **4bpp (16-colour):** every palette treats index 0 as transparent.
 ///
-/// The colour-0 palette entry is always writable/stored regardless (that is the
-/// other half of the ares fix); this decides only whether it is *drawn*.
+/// `REG_BACK_COLOR` is the always-drawn fallback and shows index 0 opaque.
 #[must_use]
-pub const fn color_zero_transparent(mode: DisplayMode, palette: u8, as_back_color: bool) -> bool {
+pub const fn color_zero_transparent(depth: Depth, palette: u8, as_back_color: bool) -> bool {
     if as_back_color {
         return false; // REG_BACK_COLOR displays index 0 opaque
     }
-    match mode {
+    match depth {
         // Palettes 4–7 and 12–15 (bit 2 set) use index 0 as transparency.
-        DisplayMode::Mono => palette & 0x04 != 0,
-        DisplayMode::Color => true,
+        Depth::TwoBpp => palette & 0x04 != 0,
+        Depth::FourBpp => true,
     }
 }
 
@@ -135,39 +142,59 @@ mod tests {
         assert_eq!(pal.pool_index(0, 1), 7);
     }
 
-    /// Community bug #6: mono colour-zero transparency depends on the palette.
+    /// Community bug #5b: colour 0 of palettes 4-7 / 12-15 is non-writable.
     #[test]
-    fn mono_color_zero_transparency_by_palette() {
+    fn color_zero_is_write_protected_for_transparent_palettes() {
+        let mut pal = MonoPalettes::new();
+        // palette 5 (bit 2 set): reg 10 is its low byte (colours 0 and 1).
+        pal.write_palette(10, 0x35); // would set colour0=5, colour1=3
+        assert_eq!(
+            pal.pool_index(5, 0),
+            0,
+            "colour 0 stays 0 (write-protected)"
+        );
+        assert_eq!(pal.pool_index(5, 1), 3, "colour 1 still writes");
+        // palette 0 (bit 2 clear): colour 0 IS writable.
+        pal.write_palette(0, 0x05);
+        assert_eq!(pal.pool_index(0, 0), 5);
+    }
+
+    /// Community bug #6: at 2bpp, colour-zero transparency depends on the palette
+    /// number — in mono *and* colour displays (the case the old mono/colour axis
+    /// got wrong for 2bpp colour backgrounds).
+    #[test]
+    fn two_bpp_color_zero_by_palette_number() {
         for p in [0u8, 1, 2, 3, 8, 9, 10, 11] {
             assert!(
-                !color_zero_transparent(DisplayMode::Mono, p, false),
-                "mono palette {p}: index 0 is opaque"
+                !color_zero_transparent(Depth::TwoBpp, p, false),
+                "2bpp palette {p}: index 0 opaque"
             );
         }
         for p in [4u8, 5, 6, 7, 12, 13, 14, 15] {
             assert!(
-                color_zero_transparent(DisplayMode::Mono, p, false),
-                "mono palette {p}: index 0 is transparent"
+                color_zero_transparent(Depth::TwoBpp, p, false),
+                "2bpp palette {p}: index 0 transparent"
             );
         }
     }
 
-    /// Community bug #6: colour mode is all-transparent except the back colour.
+    /// Community bug #6: at 4bpp (16-colour) every palette's index 0 is
+    /// transparent, except the always-drawn `REG_BACK_COLOR`.
     #[test]
-    fn color_mode_all_transparent_except_back_color() {
+    fn four_bpp_all_transparent_except_back_color() {
         for p in 0..16u8 {
             assert!(
-                color_zero_transparent(DisplayMode::Color, p, false),
-                "colour palette {p}: index 0 transparent"
+                color_zero_transparent(Depth::FourBpp, p, false),
+                "4bpp palette {p}: index 0 transparent"
             );
         }
         assert!(
-            !color_zero_transparent(DisplayMode::Color, 0, true),
-            "REG_BACK_COLOR shows index 0 opaque"
+            !color_zero_transparent(Depth::FourBpp, 0, true),
+            "back colour opaque"
         );
         assert!(
-            !color_zero_transparent(DisplayMode::Mono, 5, true),
-            "back colour is opaque in mono too"
+            !color_zero_transparent(Depth::TwoBpp, 5, true),
+            "back colour opaque at 2bpp too"
         );
     }
 }

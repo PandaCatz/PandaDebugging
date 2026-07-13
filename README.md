@@ -15,20 +15,22 @@ test ROM or a reference-emulator oracle diff, never by "it looks right."
 The point of this project is to fix the
 [documented WonderSwan emulation bugs](docs/COMMUNITY-BUGS.md) that recur across
 Mednafen/Beetle, ares, Oswan, and Swan.emu. Every fix ships with a named test
-pinning the behaviour those emulators get wrong.
+pinning the behaviour those emulators get wrong, and each has been
+**adversarially audited against primary sources (WSMan, WSdev) and ares** — the
+audit corrected several (see the ledger's *Audit-corrected* notes).
 
-**6 fixed · 2 partial · 1 remaining** (of 9)
+**5 fixed · 3 partial · 1 remaining** (of 9)
 
 | # | Documented bug | Status |
 |---|----------------|--------|
-| 3 | UART disable leaves TX/RX IRQs pending → startup **lockups** | ✅ **fixed** (`core-ws::serial`) |
+| 2 | Sprite DMA → **tearing** | ✅ **fixed** (`core-ws::ppu` — double-buffered; copy timing left open per WSMan) |
 | 4 | Noise LFSR frozen in wave mode → *Clock Tower* **hangs** | ✅ **fixed** (`core-ws::apu`) |
 | 5 | Monochrome palette pool indirection → **wrong shading** | ✅ **fixed** (`core-ws::palette`) |
-| 8 | Internal EEPROM size → **WS/WSC mis-detection** | ✅ **fixed** (`core-ws::eeprom`) |
-| 1 | V30MZ interrupt handling (priority, edge/level, relocatable IVT) | 🔨 behaviour done + CPU V20-validated; cycle timing pending |
+| 6 | Color-zero palette behaviour (by bit depth) | ✅ **fixed** (`core-ws::palette`) |
+| 8 | Internal EEPROM size → **WS/WSC mis-detection** | ✅ **fixed** (`core-ws::eeprom`, 1 Kbit / 16 Kbit) |
+| 1 | V30MZ interrupt handling (priority, edge/level, IVT vector) | 🔨 behaviour done + CPU V20-validated; cycle timing pending |
+| 3 | UART disable → startup **lockups** | 🔨 lockup addressed; latch-vs-level semantics + data path open |
 | 7 | I/O port access timing (`IN`/`OUT` ≈ 12 cycles) | 🔨 data validated; cycle cost pending |
-| 6 | Color-zero palette behaviour | ✅ **fixed** (`core-ws::palette`) |
-| 2 | Sprite DMA at line 142 (`5 + 2n`) → **tearing** | ✅ **fixed** (`core-ws::ppu` — latch/lock timing; pixel rendering separate) |
 | 9 | 8-bit ROM bus width (Pocket Challenge V2, early carts) | ⬜ next — needs the cart bus model |
 
 Per-bug detail and the proving tests are in
@@ -42,7 +44,7 @@ V30MZ CPU is complete and hardware-validated; the last self-contained fix is the
 question resolved for timing.
 
 Verified on Rust/Cargo 1.96.0 (Windows x86-64): `cargo fmt --check`,
-`cargo clippy --all-targets -- -D warnings`, and **124 tests** all pass in debug
+`cargo clippy --all-targets -- -D warnings`, and **133 tests** all pass in debug
 and release. No `unsafe`; warnings are errors.
 
 The CPU is additionally validated against the **V20 single-step hardware oracle**

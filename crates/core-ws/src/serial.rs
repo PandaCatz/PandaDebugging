@@ -69,6 +69,7 @@ mod tests {
     #[test]
     fn disabling_clears_pending_serial_irqs() {
         let mut ic = InterruptController::new();
+        ic.set_enable(Irq::SerialTx.bit() | Irq::SerialRx.bit()); // raise is enable-gated
         let mut serial = Serial::new();
         serial.set_enabled(true, &mut ic);
         serial.signal_tx_ready(&mut ic);
@@ -101,6 +102,7 @@ mod tests {
     #[test]
     fn write_status_bit7_drives_enable_and_the_fix() {
         let mut ic = InterruptController::new();
+        ic.set_enable(Irq::SerialRx.bit()); // raise is enable-gated
         let mut serial = Serial::new();
         serial.write_status(SER_ENABLE, &mut ic);
         assert!(serial.is_enabled());

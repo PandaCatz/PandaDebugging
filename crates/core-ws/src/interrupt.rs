@@ -149,10 +149,14 @@ impl InterruptController {
         self.pending
     }
 
-    /// A source asserts its line. Edge lines latch here and stay latched until
-    /// acknowledged; level lines are held asserted while the source is active.
+    /// A source asserts its line. On hardware the **enable** bit gates whether
+    /// the status latch is set, so a line raised while it is *disabled* is not
+    /// latched and will not fire on a later enable. (A subsequent disable does
+    /// not clear an already-latched bit — the gate is at set time only.)
     pub const fn raise(&mut self, irq: Irq) {
-        self.pending |= irq.bit();
+        if self.enable & irq.bit() != 0 {
+            self.pending |= irq.bit();
+        }
     }
 
     /// A level-triggered source's condition cleared. No-op for edge lines (they
@@ -181,10 +185,12 @@ impl InterruptController {
         Irq::from_bit_index(top)
     }
 
-    /// Interrupt vector number the CPU dispatches to for `irq`.
+    /// Interrupt vector number: the base's high 5 bits with the line number in
+    /// the low 3 bits — `(base & 0xF8) | line`, **not** `base + line`. Hardware
+    /// replaces bits 2..0 with the highest pending line index.
     #[must_use]
     pub const fn vector(&self, irq: Irq) -> u8 {
-        self.base.wrapping_add(irq as u8)
+        (self.base & 0xF8) | (irq as u8)
     }
 }
 
@@ -234,6 +240,7 @@ mod tests {
     #[test]
     fn lower_only_affects_level_lines() {
         let mut ic = InterruptController::new();
+        ic.set_enable(0xFF); // raise is enable-gated
         ic.raise(Irq::Cartridge); // level
         ic.raise(Irq::Vblank); // edge
         ic.lower(Irq::Cartridge);
@@ -251,11 +258,33 @@ mod tests {
     }
 
     #[test]
-    fn vector_is_base_plus_line_number() {
+    fn raise_is_gated_by_enable() {
+        let mut ic = InterruptController::new(); // enable = 0
+        ic.raise(Irq::Vblank);
+        assert_eq!(ic.status(), 0, "raise while disabled does not latch");
+        ic.set_enable(Irq::Vblank.bit());
+        assert_eq!(
+            ic.pending_enabled(),
+            None,
+            "enabling later does not fire the stale line"
+        );
+        ic.raise(Irq::Vblank);
+        assert_eq!(
+            ic.pending_enabled(),
+            Some(Irq::Vblank),
+            "raise while enabled latches"
+        );
+    }
+
+    #[test]
+    fn vector_masks_base_low_three_bits() {
         let mut ic = InterruptController::new();
-        ic.set_base(0x40);
+        ic.set_base(0x40); // 8-aligned
         assert_eq!(ic.vector(Irq::Vblank), 0x46);
-        assert_eq!(ic.vector(Irq::SerialTx), 0x40);
+        // A base with dirty low bits: the line number REPLACES bits 2..0.
+        ic.set_base(0x1D);
+        assert_eq!(ic.vector(Irq::Vblank), 0x1E, "(0x1D & 0xF8) | 6");
+        assert_eq!(ic.vector(Irq::SerialTx), 0x18, "(0x1D & 0xF8) | 0");
     }
 
     #[test]

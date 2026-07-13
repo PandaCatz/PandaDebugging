@@ -117,9 +117,13 @@ Verified on Windows x86-64 with Rust/Cargo 1.96.0 on 2026-07-13:
 
 - `cargo fmt --all -- --check` — pass.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — pass.
-- `cargo test --workspace --all-targets --all-features` — 111 passed, 0 failed
-  (cpu-v30mz 85, core-ws 12, format-ws 6, ws-testkit 5, ws-contracts 3, ws-cli 0).
-- `cargo test --release --workspace` — 111 passed, 0 failed.
+- `cargo test --workspace --all-targets --all-features` — 133 passed, 0 failed
+  (cpu-v30mz 85, core-ws 34, format-ws 6, ws-testkit 5, ws-contracts 3, ws-cli 0).
+- `cargo test --release --workspace` — 133 passed, 0 failed.
+- Community-bug fixes adversarially audited vs WSMan/WSdev/ares (14-agent
+  workflow); corrected EEPROM size (128B), color-zero (bit-depth axis), the
+  interrupt vector mask + enable-gated raise, LFSR enable-gating, sprite-DMA
+  double-buffering, and the palette colour-0 write-protect. See docs/COMMUNITY-BUGS.md.
 - `cargo run -p v20-harness --release` — V20 single-step oracle: 93.49% exact
   pass over 612k runnable cases, **zero defined-behaviour bugs** (all divergences
   are V20-only instructions or officially-undefined flags). See
