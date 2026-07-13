@@ -160,6 +160,41 @@ impl Cpu {
                 self.regs.ax = r;
                 self.regs.set_reg16(i, ax);
             }
+            // ---- stack ----
+            0x50..=0x57 => {
+                let v = self.regs.reg16(opcode & 7);
+                self.push16(bus, v);
+            }
+            0x58..=0x5F => {
+                let v = self.pop16(bus);
+                self.regs.set_reg16(opcode & 7, v);
+            }
+            0x06 | 0x0E | 0x16 | 0x1E => {
+                // PUSH ES/CS/SS/DS
+                let v = self.regs.seg((opcode >> 3) & 3);
+                self.push16(bus, v);
+            }
+            0x07 | 0x17 | 0x1F => {
+                // POP ES/SS/DS  (0x0F is a NOP on V30MZ, not POP CS)
+                let v = self.pop16(bus);
+                self.regs.set_seg((opcode >> 3) & 3, v);
+            }
+            0x8F => {
+                // POP Ev
+                let m = self.decode_modrm(bus, seg);
+                let v = self.pop16(bus);
+                self.write_rm16(bus, m.rm, v);
+            }
+            0x9C => {
+                // PUSHF
+                let v = self.regs.flags.to_word();
+                self.push16(bus, v);
+            }
+            0x9D => {
+                // POPF
+                let v = self.pop16(bus);
+                self.regs.flags = crate::registers::Flags::from_word(v);
+            }
             // ---- flags / control ----
             0xF4 => {
                 self.halted = true;
@@ -315,6 +350,21 @@ impl Cpu {
         let [lo, hi] = value.to_le_bytes();
         bus.write_u8(physical_address(segment, offset), lo);
         bus.write_u8(physical_address(segment, offset.wrapping_add(1)), hi);
+    }
+
+    /// Push a word: predecrement `SP` by 2, then store at `SS:SP`.
+    fn push16(&mut self, bus: &mut dyn CpuBus, value: u16) {
+        self.regs.sp = self.regs.sp.wrapping_sub(2);
+        let (segment, offset) = (self.regs.ss, self.regs.sp);
+        self.write_mem16(bus, segment, offset, value);
+    }
+
+    /// Pop a word: load from `SS:SP`, then postincrement `SP` by 2.
+    fn pop16(&mut self, bus: &mut dyn CpuBus) -> u16 {
+        let (segment, offset) = (self.regs.ss, self.regs.sp);
+        let value = self.read_mem16(bus, segment, offset);
+        self.regs.sp = self.regs.sp.wrapping_add(2);
+        value
     }
 }
 
@@ -552,5 +602,70 @@ mod tests {
         assert_eq!((cpu.regs.cx, cpu.regs.dx), (0x2222, 0x1111));
         cpu.step(&mut bus);
         assert_eq!((cpu.regs.ax, cpu.regs.bx), (0xBBBB, 0xAAAA));
+    }
+
+    #[test]
+    fn push_pop_register_roundtrip() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0x50, 0x5B]); // PUSH AX ; POP BX
+        let mut cpu = cpu();
+        cpu.regs.ss = 0x3000;
+        cpu.regs.sp = 0x0100;
+        cpu.regs.ax = 0xCAFE;
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.sp, 0x00FE, "SP predecremented by 2");
+        assert_eq!(bus.read_u8(physical_address(0x3000, 0x00FE)), 0xFE);
+        assert_eq!(bus.read_u8(physical_address(0x3000, 0x00FF)), 0xCA);
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.bx, 0xCAFE);
+        assert_eq!(cpu.regs.sp, 0x0100, "SP restored");
+    }
+
+    #[test]
+    fn pushf_popf_roundtrip() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0x9C, 0x9D]); // PUSHF ; POPF
+        let mut cpu = cpu();
+        cpu.regs.ss = 0x3000;
+        cpu.regs.sp = 0x0010;
+        cpu.regs.flags.carry = true;
+        cpu.regs.flags.zero = true;
+        cpu.step(&mut bus); // PUSHF
+        cpu.regs.flags.carry = false;
+        cpu.regs.flags.zero = false;
+        cpu.step(&mut bus); // POPF restores
+        assert!(cpu.regs.flags.carry && cpu.regs.flags.zero);
+    }
+
+    #[test]
+    fn push_pop_segment_registers() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0x06, 0x1F]); // PUSH ES ; POP DS
+        let mut cpu = cpu();
+        cpu.regs.ss = 0x3000;
+        cpu.regs.sp = 0x0020;
+        cpu.regs.es = 0x7777;
+        cpu.step(&mut bus);
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.ds, 0x7777);
+    }
+
+    #[test]
+    fn pop_into_memory_operand() {
+        let mut bus = TestBus::new();
+        // PUSH AX ; POP [BX]  (8F, mod=00 reg=0 rm=7)
+        bus.load(0, &[0x50, 0x8F, 0b00_000_111]);
+        let mut cpu = cpu();
+        cpu.regs.ss = 0x3000;
+        cpu.regs.sp = 0x0040;
+        cpu.regs.ds = 0x2000;
+        cpu.regs.bx = 0x0080;
+        cpu.regs.ax = 0x1234;
+        cpu.step(&mut bus); // PUSH AX
+        cpu.step(&mut bus); // POP [BX]
+        let addr = physical_address(0x2000, 0x0080);
+        assert_eq!(bus.read_u8(addr), 0x34);
+        assert_eq!(bus.read_u8(addr + 1), 0x12);
+        assert_eq!(cpu.regs.sp, 0x0040);
     }
 }
