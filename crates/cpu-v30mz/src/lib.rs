@@ -11,6 +11,7 @@
 //! master-clock-vs-CPU-clock cycle-unit question is resolved on hardware — see
 //! the preamble of `docs/hardware/01-cpu-v30mz.md`. No cycle counts are baked in.
 
+pub mod alu;
 pub mod bus;
 pub mod decode;
 pub mod registers;
