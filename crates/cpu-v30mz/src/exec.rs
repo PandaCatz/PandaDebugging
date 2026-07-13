@@ -376,6 +376,8 @@ impl Cpu {
                     self.regs.ip = self.regs.ip.wrapping_add(rel);
                 }
             }
+            // ---- GRP2 shifts / rotates ----
+            0xC0 | 0xC1 | 0xD0 | 0xD1 | 0xD2 | 0xD3 => self.execute_grp2(bus, opcode, seg),
             // ---- I/O ports ----
             0xE4 => {
                 let port = u16::from(self.fetch_u8(bus));
@@ -720,6 +722,26 @@ impl Cpu {
         let fits = (-32768..=32767).contains(&result);
         self.regs.flags.carry = !fits;
         self.regs.flags.overflow = !fits;
+    }
+
+    /// GRP2 (`C0/C1/D0/D1/D2/D3`): shifts and rotates.
+    fn execute_grp2(&mut self, bus: &mut dyn CpuBus, opcode: u8, seg: Option<u16>) {
+        let word = opcode & 1 == 1;
+        let m = self.decode_modrm(bus, seg);
+        let count: u8 = match opcode {
+            0xD0 | 0xD1 => 1,
+            0xD2 | 0xD3 => self.regs.cl(),
+            _ => self.fetch_u8(bus), // C0 / C1 take an imm8 count
+        };
+        if word {
+            let a = self.read_rm16(bus, m.rm);
+            let r = alu::shift_rotate16(&mut self.regs.flags, m.reg, a, count);
+            self.write_rm16(bus, m.rm, r);
+        } else {
+            let a = self.read_rm8(bus, m.rm);
+            let r = alu::shift_rotate8(&mut self.regs.flags, m.reg, a, count);
+            self.write_rm8(bus, m.rm, r);
+        }
     }
 
     /// Execute a string instruction, honouring an optional REP/REPE/REPNE prefix.
@@ -1609,5 +1631,75 @@ mod tests {
         assert_eq!(cpu.regs.di, 0x0003, "advanced past the match");
         assert_eq!(cpu.regs.cx, 5);
         assert!(cpu.regs.flags.zero);
+    }
+
+    #[test]
+    fn shl_by_one() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xD0, 0b11_100_000]); // SHL AL,1 (D0 /4, rm=0=AL)
+        let mut cpu = cpu();
+        cpu.regs.set_al(0x40);
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.al(), 0x80);
+        assert!(!cpu.regs.flags.carry && cpu.regs.flags.overflow && cpu.regs.flags.sign);
+    }
+
+    #[test]
+    fn shr_by_cl() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xD2, 0b11_101_000]); // SHR AL,CL (D2 /5, rm=0=AL)
+        let mut cpu = cpu();
+        cpu.regs.set_al(0x80);
+        cpu.regs.set_cl(4);
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.al(), 0x08);
+    }
+
+    #[test]
+    fn sar_preserves_sign() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xD0, 0b11_111_000]); // SAR AL,1 (D0 /7)
+        let mut cpu = cpu();
+        cpu.regs.set_al(0x80);
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.al(), 0xC0);
+    }
+
+    #[test]
+    fn rol_then_ror() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xD0, 0b11_000_000, 0xD0, 0b11_001_000]); // ROL AL,1 ; ROR AL,1
+        let mut cpu = cpu();
+        cpu.regs.set_al(0x80);
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.al(), 0x01);
+        assert!(cpu.regs.flags.carry);
+        cpu.regs.set_al(0x01);
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.al(), 0x80);
+        assert!(cpu.regs.flags.carry);
+    }
+
+    #[test]
+    fn shl_word_by_immediate_count() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xC1, 0b11_100_011, 0x04]); // SHL BX,4 (C1 /4, rm=3=BX)
+        let mut cpu = cpu();
+        cpu.regs.bx = 0x0001;
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.bx, 0x0010);
+    }
+
+    #[test]
+    fn shift_count_zero_leaves_flags() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xD2, 0b11_100_000]); // SHL AL,CL with CL=0
+        let mut cpu = cpu();
+        cpu.regs.set_al(0x40);
+        cpu.regs.set_cl(0);
+        cpu.regs.flags.carry = true;
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.al(), 0x40, "no change");
+        assert!(cpu.regs.flags.carry, "flags untouched by a count of 0");
     }
 }

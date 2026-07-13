@@ -166,6 +166,126 @@ width_ops!(
     not16
 );
 
+/// GRP2 shift/rotate. `op` is the ModR/M reg field:
+/// 0=ROL 1=ROR 2=RCL 3=RCR 4=SHL/SAL 5=SHR 6=SAL (undocumented, = SHL) 7=SAR.
+///
+/// The `count` is used **raw**. Whether the V30MZ masks the count to 5 bits
+/// (80186+ behaviour) or uses the full 8-bit count (8086/V20 behaviour) is
+/// unresolved (see `docs/hardware/01-cpu-v30mz.md`) and must be checked against
+/// WSCpuTest before it is trusted.
+///
+/// Rotates affect only CF and OF; shifts also set SF/ZF/PF (AF undefined). OF is
+/// defined only for a count of 1. A count of 0 changes nothing.
+fn shift_rotate(flags: &mut Flags, op: u8, value: u16, count: u8, word: bool) -> u16 {
+    let width = if word { Width::B16 } else { Width::B8 };
+    let bits = width.bits;
+    let mask = width.mask();
+    let mut val = u32::from(value) & mask;
+    if count == 0 {
+        return val as u16;
+    }
+    let n = u32::from(count);
+    let mut cf = u32::from(flags.carry);
+    let top = |v: u32| (v >> (bits - 1)) & 1;
+    match op {
+        0 => {
+            // ROL
+            for _ in 0..n {
+                let hi = top(val);
+                val = ((val << 1) | hi) & mask;
+                cf = hi;
+            }
+            flags.carry = cf != 0;
+            if n == 1 {
+                flags.overflow = (top(val) ^ cf) != 0;
+            }
+        }
+        1 => {
+            // ROR
+            for _ in 0..n {
+                let lo = val & 1;
+                val = (val >> 1) | (lo << (bits - 1));
+                cf = lo;
+            }
+            flags.carry = cf != 0;
+            if n == 1 {
+                flags.overflow = (top(val) ^ ((val >> (bits - 2)) & 1)) != 0;
+            }
+        }
+        2 => {
+            // RCL (through carry)
+            for _ in 0..n {
+                let hi = top(val);
+                val = ((val << 1) | cf) & mask;
+                cf = hi;
+            }
+            flags.carry = cf != 0;
+            if n == 1 {
+                flags.overflow = (top(val) ^ cf) != 0;
+            }
+        }
+        3 => {
+            // RCR (through carry)
+            for _ in 0..n {
+                let lo = val & 1;
+                val = (val >> 1) | (cf << (bits - 1));
+                cf = lo;
+            }
+            flags.carry = cf != 0;
+            if n == 1 {
+                flags.overflow = (top(val) ^ ((val >> (bits - 2)) & 1)) != 0;
+            }
+        }
+        4 | 6 => {
+            // SHL / SAL
+            for _ in 0..n {
+                cf = top(val);
+                val = (val << 1) & mask;
+            }
+            flags.carry = cf != 0;
+            if n == 1 {
+                flags.overflow = (top(val) ^ cf) != 0;
+            }
+            set_szp(flags, val, width);
+        }
+        5 => {
+            // SHR
+            let orig_top = top(val);
+            for _ in 0..n {
+                cf = val & 1;
+                val >>= 1;
+            }
+            flags.carry = cf != 0;
+            if n == 1 {
+                flags.overflow = orig_top != 0;
+            }
+            set_szp(flags, val, width);
+        }
+        _ => {
+            // SAR (7): arithmetic, keeps the sign bit
+            let sign = top(val);
+            for _ in 0..n {
+                cf = val & 1;
+                val = (val >> 1) | (sign << (bits - 1));
+            }
+            flags.carry = cf != 0;
+            if n == 1 {
+                flags.overflow = false;
+            }
+            set_szp(flags, val, width);
+        }
+    }
+    (val & mask) as u16
+}
+
+pub fn shift_rotate8(flags: &mut Flags, op: u8, value: u8, count: u8) -> u8 {
+    shift_rotate(flags, op, u16::from(value), count, false) as u8
+}
+
+pub fn shift_rotate16(flags: &mut Flags, op: u8, value: u16, count: u8) -> u16 {
+    shift_rotate(flags, op, value, count, true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -264,5 +384,45 @@ mod tests {
     fn not_affects_no_flags() {
         assert_eq!(not8(0x0F), 0xF0);
         assert_eq!(not16(0x00FF), 0xFF00);
+    }
+
+    #[test]
+    fn shl8_carry_overflow_zero() {
+        let mut fl = f();
+        assert_eq!(shift_rotate8(&mut fl, 4, 0x80, 1), 0x00);
+        assert!(fl.carry && fl.zero);
+        let mut fl = f();
+        assert_eq!(shift_rotate8(&mut fl, 4, 0x40, 1), 0x80);
+        assert!(!fl.carry && fl.overflow && fl.sign);
+    }
+
+    #[test]
+    fn rcl8_rotates_through_carry() {
+        let mut fl = f();
+        fl.carry = true;
+        assert_eq!(shift_rotate8(&mut fl, 2, 0x00, 1), 0x01);
+        assert!(!fl.carry);
+    }
+
+    #[test]
+    fn rotates_leave_zero_flag_untouched() {
+        let mut fl = f();
+        fl.zero = true;
+        assert_eq!(shift_rotate8(&mut fl, 0, 0x01, 1), 0x02); // ROL
+        assert!(fl.zero, "rotates must not alter SF/ZF/PF");
+    }
+
+    #[test]
+    fn shift_count_zero_is_a_noop() {
+        let mut fl = f();
+        fl.carry = true;
+        assert_eq!(shift_rotate8(&mut fl, 4, 0x80, 0), 0x80);
+        assert!(fl.carry, "count 0 leaves flags untouched");
+    }
+
+    #[test]
+    fn sar_keeps_sign_bit() {
+        let mut fl = f();
+        assert_eq!(shift_rotate8(&mut fl, 7, 0x80, 1), 0xC0);
     }
 }
