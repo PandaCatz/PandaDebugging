@@ -3,9 +3,16 @@
 //! coherent block with tests. **No cycle counting yet** — the master-vs-CPU
 //! cycle-unit question (see `docs/hardware/01-cpu-v30mz.md`) is unresolved.
 //!
-//! Implemented so far: segment-override / LOCK prefixes, the ALU opcode block
-//! (`ADD/OR/ADC/SBB/AND/SUB/XOR/CMP`, opcodes `0x00–0x3D`, all six operand
-//! forms), and the flag / `NOP` / `HLT` opcodes.
+//! Implemented so far: segment-override / LOCK prefixes; the ALU block
+//! (`ADD/OR/ADC/SBB/AND/SUB/XOR/CMP`, `0x00–0x3D`, all six forms) and GRP1
+//! immediate ALU (`0x80–0x83`); MOV (all forms, segment regs, `LEA`, moffs,
+//! imm); `XCHG`; `INC`/`DEC` r16; `TEST`; `CBW`/`CWD`; `SALC`; the stack ops
+//! (`PUSH`/`POP`, `PUSHF`/`POPF`); control flow (`Jcc`, `JMP`, `CALL`, `RET`,
+//! `LOOP`); and the flag / `NOP` / `HLT` opcodes.
+//!
+//! Not yet: GRP2 shifts/rotates, GRP3 (`MUL`/`DIV`/`NOT`/`NEG`), GRP4/5
+//! (`INC`/`DEC`/indirect `CALL`/`JMP`/`PUSH` r/m), string ops + `REP`, `INT`/
+//! `IRET` and interrupt delivery, and `IN`/`OUT`.
 
 use crate::Cpu;
 use crate::alu;
@@ -159,6 +166,88 @@ impl Cpu {
                 let r = self.regs.reg16(i);
                 self.regs.ax = r;
                 self.regs.set_reg16(i, ax);
+            }
+            // ---- INC/DEC r16, immediate ALU, TEST, CBW/CWD, SALC ----
+            0x40..=0x47 => {
+                let i = opcode & 7;
+                let v0 = self.regs.reg16(i);
+                let v = alu::inc16(&mut self.regs.flags, v0);
+                self.regs.set_reg16(i, v);
+            }
+            0x48..=0x4F => {
+                let i = opcode & 7;
+                let v0 = self.regs.reg16(i);
+                let v = alu::dec16(&mut self.regs.flags, v0);
+                self.regs.set_reg16(i, v);
+            }
+            0x80 | 0x82 => {
+                // GRP1 Eb, Ib
+                let m = self.decode_modrm(bus, seg);
+                let imm = self.fetch_u8(bus);
+                let a = self.read_rm8(bus, m.rm);
+                if let Some(r) = self.apply_alu8(m.reg, a, imm) {
+                    self.write_rm8(bus, m.rm, r);
+                }
+            }
+            0x81 => {
+                // GRP1 Ev, Iv
+                let m = self.decode_modrm(bus, seg);
+                let imm = self.fetch_u16(bus);
+                let a = self.read_rm16(bus, m.rm);
+                if let Some(r) = self.apply_alu16(m.reg, a, imm) {
+                    self.write_rm16(bus, m.rm, r);
+                }
+            }
+            0x83 => {
+                // GRP1 Ev, Ib (sign-extended immediate)
+                let m = self.decode_modrm(bus, seg);
+                let imm = self.fetch_u8(bus) as i8 as i16 as u16;
+                let a = self.read_rm16(bus, m.rm);
+                if let Some(r) = self.apply_alu16(m.reg, a, imm) {
+                    self.write_rm16(bus, m.rm, r);
+                }
+            }
+            0x84 => {
+                // TEST Eb, Gb
+                let m = self.decode_modrm(bus, seg);
+                let a = self.read_rm8(bus, m.rm);
+                let b = self.regs.reg8(m.reg);
+                alu::test8(&mut self.regs.flags, a, b);
+            }
+            0x85 => {
+                // TEST Ev, Gv
+                let m = self.decode_modrm(bus, seg);
+                let a = self.read_rm16(bus, m.rm);
+                let b = self.regs.reg16(m.reg);
+                alu::test16(&mut self.regs.flags, a, b);
+            }
+            0xA8 => {
+                let imm = self.fetch_u8(bus);
+                let a = self.regs.al();
+                alu::test8(&mut self.regs.flags, a, imm);
+            }
+            0xA9 => {
+                let imm = self.fetch_u16(bus);
+                let a = self.regs.ax;
+                alu::test16(&mut self.regs.flags, a, imm);
+            }
+            0x98 => {
+                // CBW: sign-extend AL into AX
+                let al = self.regs.al();
+                self.regs.ax = al as i8 as i16 as u16;
+            }
+            0x99 => {
+                // CWD: sign-extend AX into DX
+                self.regs.dx = if self.regs.ax & 0x8000 != 0 {
+                    0xFFFF
+                } else {
+                    0
+                };
+            }
+            0xD6 => {
+                // SALC (undocumented on V30MZ): AL = CF ? 0xFF : 0x00
+                let v = if self.regs.flags.carry { 0xFF } else { 0x00 };
+                self.regs.set_al(v);
             }
             // ---- stack ----
             0x50..=0x57 => {
@@ -866,5 +955,79 @@ mod tests {
         cpu.step(&mut bus);
         assert_eq!((cpu.regs.cs, cpu.regs.ip), (0x0000, 0x0005));
         assert_eq!(cpu.regs.sp, 0x0100);
+    }
+
+    #[test]
+    fn inc_dec_r16() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0x40, 0x49]); // INC AX ; DEC CX
+        let mut cpu = cpu();
+        cpu.regs.ax = 0x00FF;
+        cpu.regs.cx = 0x0001;
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.ax, 0x0100);
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.cx, 0x0000);
+        assert!(cpu.regs.flags.zero);
+    }
+
+    #[test]
+    fn grp1_add_and_sign_extended_immediate() {
+        let mut bus = TestBus::new();
+        // ADD BX,0x05 then ADD BX,-1 (both via 83 /0, mod=11 rm=3=BX)
+        bus.load(0, &[0x83, 0b11_000_011, 0x05, 0x83, 0b11_000_011, 0xFF]);
+        let mut cpu = cpu();
+        cpu.regs.bx = 0x0010;
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.bx, 0x0015);
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.bx, 0x0014, "0xFF sign-extended to -1");
+    }
+
+    #[test]
+    fn grp1_cmp_immediate_is_flags_only() {
+        let mut bus = TestBus::new();
+        // CMP AL,0x10 via 80 /7 (reg=7=CMP, mod=11 rm=0=AL)
+        bus.load(0, &[0x80, 0b11_111_000, 0x10]);
+        let mut cpu = cpu();
+        cpu.regs.set_al(0x10);
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.al(), 0x10, "CMP does not write back");
+        assert!(cpu.regs.flags.zero);
+    }
+
+    #[test]
+    fn test_accumulator_immediate() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xA8, 0x0F]); // TEST AL,0x0F
+        let mut cpu = cpu();
+        cpu.regs.set_al(0xF0);
+        cpu.step(&mut bus);
+        assert!(cpu.regs.flags.zero, "0xF0 & 0x0F == 0");
+    }
+
+    #[test]
+    fn cbw_and_cwd_sign_extend() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0x98, 0x99]); // CBW ; CWD
+        let mut cpu = cpu();
+        cpu.regs.set_al(0x80);
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.ax, 0xFF80);
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.dx, 0xFFFF);
+    }
+
+    #[test]
+    fn salc_reflects_carry() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xD6, 0xD6]); // SALC ; SALC
+        let mut cpu = cpu();
+        cpu.regs.flags.carry = true;
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.al(), 0xFF);
+        cpu.regs.flags.carry = false;
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.al(), 0x00);
     }
 }
