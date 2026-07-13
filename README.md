@@ -15,14 +15,14 @@ test ROM or a reference-emulator oracle diff, never by "it looks right."
 **Current focus:** Phase 2 — the NEC V30MZ opcode decoder/executor.
 
 Verified on Rust/Cargo 1.96.0 (Windows x86-64): `cargo fmt --check`,
-`cargo clippy --all-targets -- -D warnings`, and **56 tests** all pass in debug
+`cargo clippy --all-targets -- -D warnings`, and **79 tests** all pass in debug
 and release. No `unsafe`; warnings are errors.
 
 | Phase | What | Status |
 |------:|------|--------|
 | 0 | Charter, toolchain, fixtures, provenance | 🔨 in progress (toolchain + provenance done; ROM-header decode & test-ROM acquisition pending) |
 | 1 | Headless skeleton (contracts, parser, testkit, CLI) | ✅ complete |
-| 2 | V30MZ CPU + interrupt/bus timing | 🔨 in progress — [specs](docs/hardware/) done + adversarially verified; register file, ModR/M decode, ALU, and a `step()` executor (ALU opcode block + flag/NOP/HLT) done; MOV / stack / jumps / groups next |
+| 2 | V30MZ CPU + interrupt/bus timing | 🔨 in progress — [specs](docs/hardware/) done + verified; `step()` executor runs ALU + GRP1, MOV/`XCHG`, `INC`/`DEC`, `TEST`, stack (`PUSH`/`POP`/`PUSHF`), and control flow (`Jcc`/`JMP`/`CALL`/`RET`/`LOOP`). Remaining: shifts, `MUL`/`DIV`, indirect group ops, strings/`REP`, `INT`/interrupt delivery, `IN`/`OUT`, timing |
 | 3 | PPU / display (sprite DMA @142, palettes, color-zero) | ⬜ planned |
 | 4 | APU / sound (unsigned mixing, LFSR-in-wave-mode, sweep) | ⬜ planned |
 | 5 | DMA / SDMA (`5 + 2n`, CPU halt, cart-SRAM source) | ⬜ planned |
@@ -44,7 +44,7 @@ verified evidence are in [`CLAUDE.md`](CLAUDE.md).
 |-------|------|-------|
 | `ws-contracts` | Deterministic API: integer emulated time, typed video/audio/input packets, the `Core`/`OutputSink` traits, non-panicking errors. | ✅ |
 | `format-ws` | Defensive, borrowed parser for `.ws` / `.wsc` cartridge images. Bytes in, validated view out. | ✅ structural (header fields deferred) |
-| `cpu-v30mz` | NEC V30MZ core. Register file, flags, 20-bit addressing, `FFFF:0000` reset, `CpuBus`, ModR/M decode, ALU, and a `step()` executor. | 🔨 ALU opcode block runs; MOV/stack/jumps/groups and timing pending |
+| `cpu-v30mz` | NEC V30MZ core. Registers, flags, addressing, reset, `CpuBus`, ModR/M decode, ALU, and a `step()` executor running a large opcode subset. | 🔨 runs ALU/MOV/stack/control-flow; shifts, `MUL`/`DIV`, strings, interrupts, `IN`/`OUT`, and timing pending |
 | `core-ws` | The WonderSwan machine core. Cartridge boundary, I/O map, unit-tested interrupt-controller model. | 🔨 boundary + interrupt model |
 | `ws-testkit` | Deterministic synthetic core + capture sink + stable hashing. Home of the hardware-test-ROM runner (arrives with the CPU). | ✅ synthetic path |
 | `ws-cli` | Headless runner and ROM inspector. | ✅ |
