@@ -195,6 +195,87 @@ impl Cpu {
                 let v = self.pop16(bus);
                 self.regs.flags = crate::registers::Flags::from_word(v);
             }
+            // ---- control flow ----
+            0x70..=0x7F => {
+                // Jcc rel8
+                let rel = self.fetch_u8(bus) as i8 as i16 as u16;
+                if self.condition(opcode & 0x0F) {
+                    self.regs.ip = self.regs.ip.wrapping_add(rel);
+                }
+            }
+            0xEB => {
+                let rel = self.fetch_u8(bus) as i8 as i16 as u16;
+                self.regs.ip = self.regs.ip.wrapping_add(rel);
+            }
+            0xE9 => {
+                let rel = self.fetch_u16(bus);
+                self.regs.ip = self.regs.ip.wrapping_add(rel);
+            }
+            0xEA => {
+                // JMP far ptr16:16
+                let ip = self.fetch_u16(bus);
+                let cs = self.fetch_u16(bus);
+                self.regs.ip = ip;
+                self.regs.cs = cs;
+            }
+            0xE8 => {
+                // CALL rel16
+                let rel = self.fetch_u16(bus);
+                let ret = self.regs.ip;
+                self.push16(bus, ret);
+                self.regs.ip = self.regs.ip.wrapping_add(rel);
+            }
+            0x9A => {
+                // CALL far ptr16:16
+                let new_ip = self.fetch_u16(bus);
+                let new_cs = self.fetch_u16(bus);
+                let (cs, ip) = (self.regs.cs, self.regs.ip);
+                self.push16(bus, cs);
+                self.push16(bus, ip);
+                self.regs.cs = new_cs;
+                self.regs.ip = new_ip;
+            }
+            0xC3 => self.regs.ip = self.pop16(bus), // RET near
+            0xC2 => {
+                // RET near, pop imm16 extra
+                let imm = self.fetch_u16(bus);
+                self.regs.ip = self.pop16(bus);
+                self.regs.sp = self.regs.sp.wrapping_add(imm);
+            }
+            0xCB => {
+                // RETF
+                self.regs.ip = self.pop16(bus);
+                self.regs.cs = self.pop16(bus);
+            }
+            0xCA => {
+                // RETF, pop imm16 extra
+                let imm = self.fetch_u16(bus);
+                self.regs.ip = self.pop16(bus);
+                self.regs.cs = self.pop16(bus);
+                self.regs.sp = self.regs.sp.wrapping_add(imm);
+            }
+            0xE0..=0xE3 => {
+                // LOOPNE / LOOPE / LOOP / JCXZ
+                let rel = self.fetch_u8(bus) as i8 as i16 as u16;
+                let take = match opcode {
+                    0xE0 => {
+                        self.regs.cx = self.regs.cx.wrapping_sub(1);
+                        self.regs.cx != 0 && !self.regs.flags.zero
+                    }
+                    0xE1 => {
+                        self.regs.cx = self.regs.cx.wrapping_sub(1);
+                        self.regs.cx != 0 && self.regs.flags.zero
+                    }
+                    0xE2 => {
+                        self.regs.cx = self.regs.cx.wrapping_sub(1);
+                        self.regs.cx != 0
+                    }
+                    _ => self.regs.cx == 0, // 0xE3 JCXZ (no decrement)
+                };
+                if take {
+                    self.regs.ip = self.regs.ip.wrapping_add(rel);
+                }
+            }
             // ---- flags / control ----
             0xF4 => {
                 self.halted = true;
@@ -303,6 +384,29 @@ impl Cpu {
                 return None;
             }
         })
+    }
+
+    /// Evaluate an 8086 condition code (the low nibble of a `Jcc` opcode).
+    fn condition(&self, cc: u8) -> bool {
+        let f = &self.regs.flags;
+        match cc {
+            0x0 => f.overflow,
+            0x1 => !f.overflow,
+            0x2 => f.carry,
+            0x3 => !f.carry,
+            0x4 => f.zero,
+            0x5 => !f.zero,
+            0x6 => f.carry || f.zero,
+            0x7 => !f.carry && !f.zero,
+            0x8 => f.sign,
+            0x9 => !f.sign,
+            0xA => f.parity,
+            0xB => !f.parity,
+            0xC => f.sign != f.overflow,
+            0xD => f.sign == f.overflow,
+            0xE => f.zero || (f.sign != f.overflow),
+            _ => !f.zero && (f.sign == f.overflow),
+        }
     }
 
     fn read_rm8(&mut self, bus: &mut dyn CpuBus, rm: Rm) -> u8 {
@@ -667,5 +771,100 @@ mod tests {
         assert_eq!(bus.read_u8(addr), 0x34);
         assert_eq!(bus.read_u8(addr + 1), 0x12);
         assert_eq!(cpu.regs.sp, 0x0040);
+    }
+
+    #[test]
+    fn jmp_rel8() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xEB, 0x03, 0x00, 0x00, 0x00, 0xF9]); // JMP +3 ; ... ; STC
+        let mut cpu = cpu();
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.ip, 0x05);
+        cpu.step(&mut bus);
+        assert!(cpu.regs.flags.carry);
+    }
+
+    #[test]
+    fn jz_taken_and_not_taken() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0x74, 0x10]); // JZ +0x10
+        let mut taken = cpu();
+        taken.regs.flags.zero = true;
+        taken.step(&mut bus);
+        assert_eq!(taken.regs.ip, 0x12);
+        let mut fallthrough = cpu();
+        fallthrough.regs.flags.zero = false;
+        fallthrough.step(&mut bus);
+        assert_eq!(fallthrough.regs.ip, 0x02);
+    }
+
+    #[test]
+    fn jl_uses_sign_ne_overflow() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0x7C, 0x08]); // JL +8
+        let mut cpu = cpu();
+        cpu.regs.flags.sign = true; // SF != OF -> less
+        cpu.regs.flags.overflow = false;
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.ip, 0x0A);
+    }
+
+    #[test]
+    fn call_and_ret_near() {
+        let mut bus = TestBus::new();
+        // CALL +2 at 0 (return addr 3, target 5); RET at 5
+        bus.load(0, &[0xE8, 0x02, 0x00, 0x00, 0x00, 0xC3]);
+        let mut cpu = cpu();
+        cpu.regs.ss = 0x3000;
+        cpu.regs.sp = 0x0100;
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.ip, 0x05);
+        assert_eq!(cpu.regs.sp, 0x00FE);
+        cpu.step(&mut bus);
+        assert_eq!(cpu.regs.ip, 0x03, "returned to instruction after CALL");
+        assert_eq!(cpu.regs.sp, 0x0100);
+    }
+
+    #[test]
+    fn loop_decrements_cx_and_branches() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xE2, 0xFE]); // LOOP -2 (to self)
+        let mut cpu = cpu();
+        cpu.regs.cx = 2;
+        cpu.step(&mut bus);
+        assert_eq!((cpu.regs.cx, cpu.regs.ip), (1, 0));
+        cpu.regs.ip = 0;
+        cpu.step(&mut bus);
+        assert_eq!((cpu.regs.cx, cpu.regs.ip), (0, 2), "CX hit 0: not taken");
+    }
+
+    #[test]
+    fn jcxz_branches_only_when_cx_zero() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0xE3, 0x05]); // JCXZ +5
+        let mut zero = cpu();
+        zero.regs.cx = 0;
+        zero.step(&mut bus);
+        assert_eq!(zero.regs.ip, 0x07);
+        let mut nonzero = cpu();
+        nonzero.regs.cx = 1;
+        nonzero.step(&mut bus);
+        assert_eq!(nonzero.regs.ip, 0x02);
+    }
+
+    #[test]
+    fn far_call_and_retf() {
+        let mut bus = TestBus::new();
+        bus.load(0, &[0x9A, 0x00, 0x00, 0x00, 0x20]); // CALL FAR 0x2000:0x0000
+        bus.write_u8(physical_address(0x2000, 0x0000), 0xCB); // RETF at target
+        let mut cpu = cpu();
+        cpu.regs.ss = 0x3000;
+        cpu.regs.sp = 0x0100;
+        cpu.step(&mut bus);
+        assert_eq!((cpu.regs.cs, cpu.regs.ip), (0x2000, 0x0000));
+        assert_eq!(cpu.regs.sp, 0x00FC, "pushed CS and IP (4 bytes)");
+        cpu.step(&mut bus);
+        assert_eq!((cpu.regs.cs, cpu.regs.ip), (0x0000, 0x0005));
+        assert_eq!(cpu.regs.sp, 0x0100);
     }
 }
