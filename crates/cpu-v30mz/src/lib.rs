@@ -14,10 +14,12 @@
 pub mod alu;
 pub mod bus;
 pub mod decode;
+pub mod exec;
 pub mod registers;
 
 pub use bus::CpuBus;
 pub use decode::{ModRm, Rm};
+pub use exec::Step;
 pub use registers::{Flags, Registers, physical_address};
 
 /// The processor: architectural state only. It reaches the outside world
