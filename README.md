@@ -17,7 +17,7 @@ The point of this project is to fix the
 Mednafen/Beetle, ares, Oswan, and Swan.emu. Every fix ships with a named test
 pinning the behaviour those emulators get wrong.
 
-**5 fixed · 2 partial · 2 remaining** (of 9)
+**6 fixed · 2 partial · 1 remaining** (of 9)
 
 | # | Documented bug | Status |
 |---|----------------|--------|
@@ -28,8 +28,8 @@ pinning the behaviour those emulators get wrong.
 | 1 | V30MZ interrupt handling (priority, edge/level, relocatable IVT) | 🔨 behaviour done + CPU V20-validated; cycle timing pending |
 | 7 | I/O port access timing (`IN`/`OUT` ≈ 12 cycles) | 🔨 data validated; cycle cost pending |
 | 6 | Color-zero palette behaviour | ✅ **fixed** (`core-ws::palette`) |
-| 2 | Sprite DMA at line 142 (`5 + 2n`) → **tearing** | ⬜ next — needs the scanline PPU |
-| 9 | 8-bit ROM bus width (Pocket Challenge V2, early carts) | ⬜ needs the cart bus model |
+| 2 | Sprite DMA at line 142 (`5 + 2n`) → **tearing** | ✅ **fixed** (`core-ws::ppu` — latch/lock timing; pixel rendering separate) |
+| 9 | 8-bit ROM bus width (Pocket Challenge V2, early carts) | ⬜ next — needs the cart bus model |
 
 Per-bug detail and the proving tests are in
 [`docs/COMMUNITY-BUGS.md`](docs/COMMUNITY-BUGS.md).
@@ -37,8 +37,9 @@ Per-bug detail and the proving tests are in
 ## Status
 
 **Current focus:** fixing the documented community bugs (scorecard above). The
-V30MZ CPU is complete and hardware-validated; next up is the scanline PPU for
-sprite-DMA tearing (#2).
+V30MZ CPU is complete and hardware-validated; the last self-contained fix is the
+8-bit ROM bus (#9), after which the remaining two (#1, #7) need the cycle-unit
+question resolved for timing.
 
 Verified on Rust/Cargo 1.96.0 (Windows x86-64): `cargo fmt --check`,
 `cargo clippy --all-targets -- -D warnings`, and **124 tests** all pass in debug
@@ -54,7 +55,7 @@ instruction or an officially-undefined flag. See
 | 0 | Charter, toolchain, fixtures, provenance | 🔨 in progress (toolchain + provenance done; ROM-header decode & test-ROM acquisition pending) |
 | 1 | Headless skeleton (contracts, parser, testkit, CLI) | ✅ complete |
 | 2 | V30MZ CPU + interrupt/bus timing | 🔨 CPU runs the **full documented 8086/80186 set** and is **V20-validated** (zero defined-behaviour bugs); machine + hardware-IRQ delivery done. Remaining: real memory map, WSCpuTest, cycle-unit → timing |
-| 3 | PPU / display (sprite DMA @142, palettes, color-zero) | 🔨 palette pool (#5) and color-zero (#6) done; sprite-DMA-@142 (#2) pending |
+| 3 | PPU / display (sprite DMA @142, palettes, color-zero) | 🔨 palettes (#5), color-zero (#6), and sprite-DMA-@142 latch/lock (#2) done; pixel rendering pending |
 | 4 | APU / sound (unsigned mixing, LFSR-in-wave-mode, sweep) | 🔨 noise LFSR in wave mode (#4) done; unsigned mixing, sweep, HyperVoice pending |
 | 5 | DMA / SDMA (`5 + 2n`, CPU halt, cart-SRAM source) | ⬜ planned |
 | 6 | Cartridge / EEPROM / RTC / serial / bus width / input | 🔨 internal EEPROM (#8) and serial/UART (#3) done; RTC, 8-bit bus width (#9), input pending |

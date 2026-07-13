@@ -23,6 +23,7 @@ pub mod interrupt;
 pub mod io;
 pub mod machine;
 pub mod palette;
+pub mod ppu;
 pub mod serial;
 
 pub use apu::{NoiseChannel, NoiseLfsr};
@@ -31,4 +32,5 @@ pub use eeprom::InternalEeprom;
 pub use interrupt::{InterruptController, Irq, Trigger};
 pub use machine::{Bus, Machine};
 pub use palette::{DisplayMode, MonoPalettes, color_zero_transparent};
+pub use ppu::SpriteUnit;
 pub use serial::Serial;
