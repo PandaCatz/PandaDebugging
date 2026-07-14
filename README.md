@@ -45,11 +45,13 @@ what each bug looked like, how it was fixed, and how we proved it is in
 
 ## Status
 
-**Current focus:** fixing the documented community bugs (scorecard above). The
-V30MZ CPU is complete and hardware-validated, and the 8-bit ROM bus (#9) now
-decodes from the cartridge footer. The remaining two partials (#1, #7) need the
-cycle-unit question resolved for timing; the next structural piece is the real
-WonderSwan memory map, which wires the fixed subsystems to their registers.
+**Current focus:** the real WonderSwan memory map, which wires the fixed
+subsystems to their registers. The V30MZ CPU is complete and hardware-validated,
+the 8-bit ROM bus (#9) decodes from the cartridge footer, and the cycle-unit
+question that blocked all instruction timing is now **resolved** (measured
+timings are CPU cycles at 3.072 MHz — no hidden 4×). The two timing partials
+(#1, #7) are unblocked; what remains is implementing per-instruction costs and
+confirming the `IN`/`OUT` value on hardware.
 
 Verified on Rust/Cargo 1.96.0 (Windows x86-64): `cargo fmt --check`,
 `cargo clippy --all-targets -- -D warnings`, and **142 tests** all pass in debug
@@ -81,11 +83,12 @@ instruction or an officially-undefined flag. See
 Detailed exit gates are in [`ROADMAP.md`](ROADMAP.md); the running state and
 verified evidence are in [`CLAUDE.md`](CLAUDE.md).
 
-> **Open blocker for timing:** it is unresolved whether the hardware LFSR
-> cycle-counter ticks at the 12.288 MHz master clock or the 3.072 MHz CPU clock —
-> a 4× factor that scales every measured timing (DMA `5+2n`, `IN`/`OUT`,
-> per-instruction). No timing literal is baked until it is measured. See the
-> preamble of [`docs/hardware/01-cpu-v30mz.md`](docs/hardware/01-cpu-v30mz.md).
+> **Timing cycle-unit — resolved:** measured WonderSwan timings are in **CPU
+> cycles (3.072 MHz)**, not master clocks — there is no hidden 4× (settled via
+> primary sources + ares/Mednafen + an `XCHG` datasheet ratio; details in the
+> [`01-cpu-v30mz.md`](docs/hardware/01-cpu-v30mz.md) preamble). Per-instruction
+> timing itself is still unimplemented (a scheduler task), and the `IN`/`OUT`
+> value still needs a hardware measurement.
 
 ## Layout
 

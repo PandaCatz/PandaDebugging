@@ -216,15 +216,29 @@ is done but a timing number or a still-open hardware question remains.
 
 ---
 
-## The one thing blocking the two partials
+## The timing question behind the two partials (now resolved)
 
-Both remaining partials (#1, #7) need instruction *timing*, and timing is blocked
-on a single unresolved fact: WonderSwan hardware timings were originally measured
-using a sound-channel counter, and it isn't settled whether that counter ticks at
-the 12.288 MHz master clock or the 3.072 MHz CPU clock — a 4× factor that scales
-*every* timing number. Rather than guess and bake a wrong constant into the whole
-scheduler, the code deliberately keeps all timing values parameterized until the
-fact is pinned down. (Resolving this is the current focus.)
+Both remaining partials (#1, #7) need instruction *timing*, and that was blocked
+on a single fact: WonderSwan hardware timings were originally measured with a
+sound-channel counter, and it wasn't settled whether that counter ticks at the
+12.288 MHz master clock or the 3.072 MHz CPU clock — a 4× factor on *every* timing
+number.
+
+We resolved it with the same research method described above, and it's a good
+example of it working: the measured values are in **CPU cycles (3.072 MHz)** —
+there is **no hidden 4×**. The whole confusion was a terminology collision (the
+original researcher's word "master clock" refers to the 3.072 MHz clock, not the
+12.288 MHz crystal). The answer is corroborated four independent ways: that
+author's own definition, two separate emulators (ares and Mednafen both clock the
+CPU at 3.072 MHz with no 4× anywhere), an instruction-timing datasheet ratio
+(`XCHG` measures 3 vs a known 3 → factor 1.0, not 4), and a physical-limits
+argument (the 4× reading would require the hardware to transfer data faster than
+its bus allows). No hardware was needed. Details are in the
+[CPU spec preamble](hardware/01-cpu-v30mz.md).
+
+What's left for #1/#7 is the ordinary work of implementing the per-instruction
+costs on the scheduler, plus a hardware measurement of the exact `IN`/`OUT` value
+— neither of which reopens the unit question.
 
 ---
 

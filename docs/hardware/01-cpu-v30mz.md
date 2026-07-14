@@ -15,13 +15,22 @@
 > `FFFF:0000` reset vector. Re-verify HTTP-only primaries before locking any
 > literal marked ⚠️.
 >
-> **#1 open question — the cycle-unit ambiguity.** It is unresolved whether the
-> hardware LFSR cycle-counter (trap15's measurement method) ticks at the
-> 12.288 MHz master clock or the 3.072 MHz CPU clock. That 4× factor scales EVERY
-> measured timing — the DMA `5 + 2n`, the disputed `IN`/`OUT` cost, and each
-> per-instruction delta. Resolve it first (measure a known-`n` DMA with the LFSR),
-> pick one canonical scheduler domain, and keep all timings parameterized until
-> then. Do not bake a timing literal before this is settled.
+> **#1 RESOLVED — the cycle-unit ambiguity (was open; settled 2026-07-14).**
+> trap15's LFSR-measured timings are in **CPU cycles (3.072 MHz)** — there is **no
+> ×4 correction** on the measured values (`5 + 2n`, `IN`/`OUT`, per-instruction
+> deltas). The whole "ambiguity" was a terminology collision: trap15's own WSMan
+> calls the 3.072 MHz sound/CPU clock the *"master clock"* ("updates every master
+> clock (3072000 Hz)") and the 12.288 MHz crystal the *"input clock"* — so "one
+> update per master clock" means one per CPU clock, not per crystal tick.
+> Confirmed four independent ways: (1) that WSMan definition; (2) both ares and
+> Mednafen clock the CPU at 3.072 MHz and charge every instruction there with no
+> ×4 anywhere (ares bills `5 + 2n` DMA in that same domain); (3) `XCHG reg,reg`
+> measures **3** vs the NEC datasheet's **3** → ratio 1.0 (a ×4 reading predicts
+> 12); (4) a physics floor — 1-cycle ops and 2-cycle/word DMA are impossible as
+> 12.288 MHz clocks. A scheduler on a master-clock base just multiplies these
+> CPU-cycle costs by 4 (§8). **Still open but independent of the unit:** the exact
+> `IN`/`OUT` *value* (§5) and the sprite-DMA formula (§6) — those need a hardware
+> measurement and do not reopen this.
 >
 > Interrupt dispatch has its own document: `02-interrupts.md`.
 
@@ -180,10 +189,17 @@ WSCpuTest exercises: `AND OR XOR TEST NOT INC DEC ADD SUB CMP ADC SBB NEG`; shif
 
 The V30MZ runs at exactly **MCLK/4**. Internal SRAM is clocked at the full 12.288 MHz and time-division-multiplexed into **four access slots** so peripherals appear to access memory simultaneously without stalling the CPU `[WSMan]`.
 
-> **Cycle-domain warning (load-bearing).** Two different cycle units appear across sources and MUST NOT be mixed:
-> - **Core cycles** (V30MZ execution cycles, 3.072 MHz domain): the per-instruction counts in §4 (`[NES-IS]`, NEC-datasheet lineage).
-> - **Master clocks** (12.288 MHz domain): trap15's LFSR counter resolution — "one update per master clock" `[BLOG]`.
-> The DMA formula `5 + 2n` and `[DD]`'s `IN/OUT = 12` are **not tagged with a unit by their sources**. Pick one canonical domain for the scheduler (recommended: master clocks) and convert everything into it explicitly; see §7 and open questions.
+> **Cycle-domain warning (load-bearing).** Two clock domains exist; the
+> measured-timing *unit* is now settled (see the preamble):
+> - **CPU cycles** (3.072 MHz): the per-instruction counts in §4 (`[NES-IS]`),
+>   trap15's LFSR-measured deltas (§7), the DMA `5 + 2n` (§6), and the `IN`/`OUT`
+>   figures (§5) are **all** in this unit. trap15's "master clock (3072000 Hz)" is
+>   this clock, not the crystal.
+> - **Master clocks** (12.288 MHz, MCLK): the SoC / RAM-slot clock = CPU × 4. Only
+>   relevant as the scheduler *base*.
+> Recommended scheduler base = master clocks; convert every CPU-cycle cost by ×4
+> (§8). The earlier "measurements might be in master clocks" reading was a
+> terminology misread and is retracted.
 
 ### 2. Memory-access-slot arbitration
 
@@ -290,9 +306,9 @@ A plausible reconciliation (do **not** encode as fact): `[NES-IS]`'s 6 is the *c
 - The 5 is fixed setup/teardown; each word costs 2 (one read + one write access) `[WSMan]`.
 - DMA runs on slot 0 and **pauses the CPU** for its whole duration, at a fixed ≈/4 rate `[WSMan]`.
 - Sprite (OAM) DMA also uses slot 0 but does **not** stall the CPU `[ARES]`; its cost model is separate and not given a formula here (open question).
-- **Unit of `5 + 2n` is unspecified by the sources.** `[DD]` calls them "master cycles"; the /4 slot rate argues they are more naturally CPU cycles (each word = 2 slot accesses = 2×4 MCLK). Pin this down before charging the scheduler (open questions).
+- **Unit of `5 + 2n` is CPU cycles (3.072 MHz) — resolved.** ares bills DMA as `step(5)` + `step(2)`/word in its 3.072 MHz CPU domain `[ARES]`, and 2 cycles/word (one read + one write of internal RAM) is only physically possible at the CPU clock. `[DD]`'s loose "master cycles" is the 3.072 MHz "master clock" in trap15's vocabulary, not the 12.288 MHz crystal. Multiply by 4 for a master-clock scheduler base (§8).
 
-> **Pitfall.** Charge the CPU stall for the *entire* `5 + 2n` window on general DMA, but **not** for sprite DMA. Getting the unit wrong scales all DMA-heavy timing by 4×.
+> **Pitfall.** Charge the CPU stall for the *entire* `5 + 2n` window on general DMA, but **not** for sprite DMA. The unit is CPU cycles (×4 into a master-clock base); do not treat `5 + 2n` as already-master-clocks or double-apply the 4×.
 
 ### 7. LFSR measurement method (for building your own timing test ROMs)
 
@@ -303,7 +319,7 @@ trap15's technique — the ground truth for any WonderSwan timing you need but c
 3. The live LFSR value is CPU-readable at ports **`$92/$93`** (15-bit) `[NES-SND]`.
 4. Sample LFSR → run operation → sample LFSR again. Because the LFSR sequence is a known permutation (mode 0: bit-14 tap, period 32767 `[NES-SND]`), convert each sample back to a linear cycle index and take the delta. Subtract the pre-measured sampling overhead → "100% accurate time delta with complete precision" `[BLOG]`.
 
-> **Pitfall.** The LFSR is a *permutation*, not a counter — you must invert the sequence (or table it) to get a monotonic index, and handle wrap at the 32767-step period. The measured delta is in **master clocks**, so results are 4× the core-cycle numbers in §4.
+> **Pitfall.** The LFSR is a *permutation*, not a counter — you must invert the sequence (or table it) to get a monotonic index, and handle wrap at the 32767-step period. At `reg = 2047` it advances once per **CPU clock**, so the measured delta is in **CPU cycles** — the *same* unit as §4, **not** 4× it. (The earlier "master clocks / 4×" note was the terminology misread; see the preamble.)
 
 ### 8. Mapping to a Rust scheduler tick budget
 
@@ -311,19 +327,19 @@ Recommended model — **one canonical tick = 1 master clock (81.4 ns)**, everyth
 
 - **Scheduler base:** integer `u64` master-clock counter. All devices (CPU, DMA, PPU line/pixel, sound sample @ 3.072MHz/(2048−reg), timers) are events on this timeline. PPU/sound never bill against CPU time (separate slots, §2).
 - **CPU step cost:** `master = 4 * core_cycles(op)`  — because CPU = MCLK/4 `[PLAT]`. Then add bus/wait penalties from §3 (each "cycle" there is a CPU cycle ⇒ ×4 into master clocks): odd-word +1, branch-to-odd +1, seg-reg write +2 / read +1, cart-region base access, mono 8-bit double-fetch.
-- **General DMA:** on trigger, advance the master clock by `(5 + 2n) × k` and hold the CPU (no CPU steps) for that window, where `k` is the resolved unit factor (`k=1` if `5+2n` is already master clocks, `k=4` if CPU cycles — **resolve first**, §6).
-- **I/O (IN/OUT):** budget the value you validate on hardware; until then, parameterize as `IO_COST` (candidates: 6 core→24 master, or the `[DD]` 12). Do not bake a literal.
+- **General DMA:** on trigger, advance the master clock by `(5 + 2n) × 4` and hold the CPU (no CPU steps) for that window. `5 + 2n` is CPU cycles (§6), so the factor into the master-clock base is 4.
+- **I/O (IN/OUT):** the *unit* is CPU cycles; the *value* is still unconfirmed (§5: `[NES-IS]` 6 vs `[DD]` 12). Parameterize as `IO_COST` in CPU cycles (→ ×4 master) and validate on hardware before baking a literal.
 - **Divide the CPU into slot 0 only** for correctness; you do not need to simulate 4 physical slots unless you model exact sub-sample RAM contention (`[ARES]`: still unknown), which no released source pins down.
 
 ```
 tick (master clocks)
 ├─ CPU:   4*core_cycles + wait_penalties*4         (slot 0)
-├─ DMA:   (5 + 2n)*k, CPU held                     (slot 0, general only)
+├─ DMA:   (5 + 2n)*4, CPU held                     (slot 0, general only)
 ├─ PPU:   line/pixel events                        (slots 2,3 — never bill CPU)
 └─ SND:   sample every (2048 - reg) *?             (slot 1 — never bill CPU)
 ```
 
-> **Pitfall — precision, not accuracy.** The core-cycle table (§4) is Intel-lineage and known to diverge from measured hardware on several ops `[DD]` `[WSTIM]`. Treat §4 as the scaffold and override individual opcodes with LFSR-measured master-clock values (§7) as you validate them. Keep a per-opcode `measured: bool` so the model can distinguish confirmed-from-hardware from datasheet-assumed at runtime.
+> **Pitfall — precision, not accuracy.** The core-cycle table (§4) is Intel-lineage and known to diverge from measured hardware on several ops `[DD]` `[WSTIM]`. Treat §4 as the scaffold and override individual opcodes with LFSR-measured **CPU-cycle** values (§7) as you validate them. Keep a per-opcode `measured: bool` so the model can distinguish confirmed-from-hardware from datasheet-assumed at runtime.
 
 
 # V30MZ Flags, Arithmetic Semantics, Exceptions & Reset
@@ -1007,8 +1023,7 @@ Generated from an independent verification pass that re-fetched sources. Items u
 **Open questions (author):**
 
 - IN/OUT cycle cost is unresolved: the deep-dive claims 12 (hardware-measured, 'not 10 as on 80186') but NO fetched source confirms it; the WSdev instruction-set table lists 6 core cycles and ares #908/asie state I/O-port timing 'remains unknown.' Resolve on hardware with a WSTimingTest-style LFSR measurement of IN AL,DX / OUT DX,AL before encoding any literal.
-- Cycle unit of the DMA formula 5+2n (and of trap15's measured instruction deltas) is not stated by the sources: the deep-dive says 'master cycles,' but the /4 DMA slot rate suggests CPU cycles (3.072 MHz). Determine whether 5+2n is in master clocks (12.288) or CPU cycles (12.288/4) — this scales all DMA timing by 4x. Verify by measuring a known-n DMA with the LFSR counter (which counts master clocks).
-- Whether trap15's LFSR counter advances at the master clock (12.288 MHz) or the CPU clock (3.072 MHz): the blog text says 'one update per master clock,' but that makes several core-cycle table values (e.g. MOV reg,reg = 1) inconsistent as master clocks. Confirm the counter's true tick unit, since it sets the domain of every measured number.
+- **RESOLVED (2026-07-14) — cycle unit of `5+2n` and of trap15's measured deltas: CPU cycles (3.072 MHz), no ×4.** trap15's "master clock" is the 3.072 MHz sound/CPU clock (WSMan: "updates every master clock (3072000 Hz)"; the 12.288 MHz crystal is the "input clock"), so at `reg=2047` the LFSR advances once per CPU clock. Corroborated by ares and Mednafen (both charge instructions — and, in ares, `5+2n` DMA — at 3.072 MHz with no ×4), by `XCHG reg,reg` = 3 measured / 3 datasheet = 1.0, and by a physics floor (1-cycle ops and 0.5-cycle/word DMA are impossible as 12.288 MHz clocks). A master-clock scheduler multiplies these by 4 (§8). Resolved by documentary + emulator-convergence + arithmetic evidence; no hardware measurement was required. See the document preamble.
 - Cart SRAM wait state conflicts between sources: ares #908 says ASWAN SRAM has a mandatory 3-cycle wait state, while WSdev Memory_map lists cart SRAM at 1(Color)/2 cycles. Confirm per-model (ASWAN/mono vs SPHINX/Color) SRAM and ROM cycle counts and the exact bit layout of the port 0xA0 bus-width/wait-state control register (not obtained).
 - Sprite (OAM) DMA cost: confirmed to NOT stall the CPU (ares #908), but no cycle-cost formula was found. Determine its master-clock cost and slot-0 behavior relative to the CPU.
 - Per-opcode WonderSwan-measured master-clock timings: no published table exists (WSTimingTest emits per-test-loop deltas, not per-opcode absolutes). The §4 core table came through a summarizing fetch of the WSdev instruction-set page and must be re-verified opcode-by-opcode against the raw wikitext, then overridden with LFSR-measured values where they diverge from Intel figures. Primary hosts daifukkat.su (wsman + blog) and perfectkiosk.net (Sacred Tech Scroll) refuse HTTPS and Wayback was blocked; wsman/blog were reached via a text-proxy and STS could not be read at all.

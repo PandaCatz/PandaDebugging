@@ -100,9 +100,12 @@ and any frontend. This is **not** a playable emulator yet.
 
 ## Key open questions before writing CPU timing
 
-- **Cycle-unit ambiguity (blocker for timing literals):** unknown whether the
-  LFSR cycle-counter ticks at 12.288 MHz (master) or 3.072 MHz (CPU). Resolve by
-  measuring a known-`n` DMA before baking any timing constant.
+- **Cycle-unit ambiguity — RESOLVED (2026-07-14):** measured timings are CPU
+  cycles (3.072 MHz), no ×4. trap15's "master clock" = 3.072 MHz (WSMan), not the
+  12.288 MHz crystal; corroborated by ares/Mednafen, `XCHG` 3/3=1.0, and a physics
+  floor. A master-clock scheduler ×4's them. Resolved by a 9-agent research
+  workflow — no hardware needed. See `01-cpu-v30mz.md` preamble. (Still open,
+  *independent of the unit:* the `IN`/`OUT` value and the sprite-DMA formula.)
 - `IN`/`OUT` cost: WSdev table says 6 core cycles; the deep-dive says 12. Do not
   hardcode either — parameterize and measure.
 - Post-DIV/IDIV flag state and `#DE` return-address semantics: implementation-
