@@ -134,11 +134,13 @@ Verified on Windows x86-64 with Rust/Cargo 1.96.0 on 2026-07-14:
 
 - `cargo fmt --all -- --check` — pass.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — pass.
-- `cargo test --workspace --all-targets --all-features` — 155 passed, 0 failed
-  (cpu-v30mz 85, core-ws 48, format-ws 14, ws-testkit 5, ws-contracts 3, ws-cli 0).
-- `cargo test --release --workspace` — 155 passed, 0 failed.
-- Mono palette (#5/#6) wired into the memory-map I/O dispatch (`$1C`–`$3F`);
-  proven end-to-end (`palette_registers_wire_through_io_dispatch`).
+- `cargo test --workspace --all-targets --all-features` — 157 passed, 0 failed
+  (cpu-v30mz 85, core-ws 50, format-ws 14, ws-testkit 5, ws-contracts 3, ws-cli 0).
+- `cargo test --release --workspace` — 157 passed, 0 failed.
+- Palette (#5/#6), serial (#3), and noise registers (#4) wired into the machine's
+  I/O dispatch; verified register maps in `docs/hardware/07-io-registers.md`.
+  Proven by `palette_registers_wire_through_io_dispatch`,
+  `serial_disable_clears_pending_irqs_through_io`, `sound_noise_registers_wire_through_io`.
 - Real memory map (`core-ws::memory`): internal RAM per model, cartridge ROM/SRAM
   bank windows, I/O three-way decode, `$A0`, open-bus. `Machine::with_cartridge`
   boots from ROM via the reset vector (test `boots_from_cartridge_rom_via_the_reset_vector`).
@@ -174,21 +176,27 @@ bugs — `docs/VALIDATION.md`); `core-ws::Machine` with hardware-IRQ delivery ov
 the **real address-routing memory map** (`memory::MemoryMap`) that boots from
 cartridge ROM via the reset vector; the verified cartridge footer decode (bug #9)
 in `format-ws`; and the cycle-unit ambiguity **resolved** (CPU cycles, no ×4).
-The mono **palette (#5/#6) is wired** into the map's I/O dispatch (`$1C`–`$3F`);
-the remaining subsystems (`apu` #4, `serial` #3, `eeprom` #8, `ppu` #2) are still
-isolated modules pending their register-map transcription + wiring.
+Wired into the machine's I/O dispatch so far: the mono **palette** (#5/#6, `$1C`–
+`$3F`, in `MemoryMap`), the **serial port** (#3, `$B3` — disabling clears its
+IRQs, wired in `Bus` because it couples to the interrupt controller), and the
+**noise-channel registers** (#4, `$8E`/`$90`/`$92`–`$93` — set-up works; the LFSR
+*advance* awaits the sound clock). All three register maps are verified
+(`docs/hardware/07-io-registers.md`). Not yet wired: the **internal EEPROM** (#8,
+register map verified, but the `$B8`–`$BF` Microwire command state machine isn't
+built) and the **PPU** (#2).
 
 Next pieces, in order:
 
-1. **Wire the remaining fixed subsystems to the memory map's I/O dispatch.** The
-   mono **palette (#5/#6) is now wired** (`MemoryMap` owns `MonoPalettes`; `$1C`–
-   `$3F` route through `soc_io_read`/`soc_io_write`). Still to wire: `apu` (#4),
-   `serial` (#3, couples to the interrupt controller — disabling the port must
-   lower its IRQ lines), and `eeprom` (#8, the `$B8`–`$BF` block with its serial
-   command protocol). **Prerequisite:** transcribe each subsystem's exact
-   register addresses from WSMan/WSdev into `io.rs` first — do **not** guess
-   addresses. `io_read`/`io_write` model `$A0` + `$C0`–`$C3` banks + palette; the
-   rest are explicit open-bus gaps.
+1. **Finish wiring the fixed subsystems.** Done: palette (#5/#6), serial (#3),
+   noise registers (#4). Remaining:
+   - **Internal EEPROM (#8):** build the Microwire command state machine on
+     `InternalEeprom` and wire the `$B8`–`$BF` block. Full verified protocol +
+     register map: `docs/hardware/07-io-registers.md`. (`InternalEeprom` is
+     currently a raw byte store with no command protocol.)
+   - **APU LFSR advance (#4):** the noise registers are wired, but `NoiseChannel::
+     tick()` needs driving by the sound clock — blocked on the timing scheduler
+     (task 2). Until then, Clock Tower's running-LFSR read returns a static value.
+   - **PPU (#2):** the sprite unit / display registers, gated on PPU rendering.
 2. **Per-instruction timing** — now unblocked (unit resolved to CPU cycles).
    Build the master-clock scheduler (CPU cost ×4), closing bugs #1 and #7 once
    the `IN`/`OUT` value is measured.

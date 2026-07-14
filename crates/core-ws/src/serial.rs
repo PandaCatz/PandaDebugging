@@ -60,6 +60,13 @@ impl Serial {
     pub const fn write_status(&mut self, value: u8, interrupts: &mut InterruptController) {
         self.set_enabled(value & SER_ENABLE != 0, interrupts);
     }
+
+    /// The `REG_SER_STATUS` read value. Only the enable bit is modelled; the
+    /// TX/RX-ready and overrun status bits are not (there is no data path yet).
+    #[must_use]
+    pub const fn status_byte(&self) -> u8 {
+        if self.enabled { SER_ENABLE } else { 0 }
+    }
 }
 
 #[cfg(test)]

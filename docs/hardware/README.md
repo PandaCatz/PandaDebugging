@@ -11,14 +11,16 @@ every behaviour and flag anything still unverified as an open question.
 - [`01-cpu-v30mz.md`](01-cpu-v30mz.md) — opcode map, cycle timing, flags/
   arithmetic/exceptions, memory & I/O map, and the CPU test-ROM validation plan.
   Web-enriched and adversarially fact-checked; unverified items are in its
-  appendix. **Read its preamble before implementing timing** (the master-vs-CPU
-  cycle-unit question is unresolved and scales all timings by 4×).
+  appendix. Its preamble records the **resolved** cycle-unit question (measured
+  timings are CPU cycles at 3.072 MHz — no 4×).
 - [`02-interrupts.md`](02-interrupts.md) — line table, priority dispatch, edge/
   level semantics, `REG_INT_*`, and IRQ-timing watch items.
 - [`06-cartridge.md`](06-cartridge.md) — verified cartridge footer layout (field
   offsets, ROM/save code tables, flags & bus width, mapper/RTC, checksum),
-  resolved source disputes, and open gaps. Grows to cover EEPROM/RTC/serial/input
-  as Phase 6 proceeds.
+  resolved source disputes, and open gaps.
+- [`07-io-registers.md`](07-io-registers.md) — verified I/O-register maps for the
+  sound noise channel, serial/UART, and internal EEPROM (addresses + bit layouts),
+  the EEPROM Microwire command protocol, resolved disputes, and open gaps.
 
 Planned (added as each phase begins):
 
@@ -29,4 +31,4 @@ Planned (added as each phase begins):
 - `05-dma.md` — general DMA + SDMA, CPU halt, cart-SRAM source, `5+2n`.
 - `06-cartridge.md` (extend) — EEPROM sizes, S-3511A RTC, UART IRQ clearing,
   keypad pull-down (footer layout + bus width already landed).
-- `07-bios-boot.md` — boot ROM, `REG_HW_FLAGS` bank-out timing, HLE fallback.
+- `08-bios-boot.md` — boot ROM, `REG_HW_FLAGS` bank-out timing, HLE fallback.

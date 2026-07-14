@@ -22,6 +22,7 @@
 //! cartridge RTC / external-EEPROM ports, most SoC registers, and all cycle
 //! timing. Interrupt ports (`$B0`/`$B6`) are handled by the owning machine.
 
+use crate::apu::NoiseChannel;
 use crate::cartridge::WsCartridge;
 use crate::io;
 use crate::palette::MonoPalettes;
@@ -89,6 +90,10 @@ pub struct MemoryMap {
     /// Monochrome two-stage palette (`$1C`–`$3F`), the home of community bug
     /// fixes #5/#6.
     palette: MonoPalettes,
+    /// Channel-4 noise generator (`$8E`/`$90`/`$92`–`$93`), community bug #4. The
+    /// registers are wired; the LFSR only *advances* once a sound clock drives
+    /// `tick()` (pending the timing scheduler).
+    noise: NoiseChannel,
 }
 
 impl MemoryMap {
@@ -122,6 +127,7 @@ impl MemoryMap {
             banks: Banks::power_up(is_2003),
             system_ctrl,
             palette: MonoPalettes::new(),
+            noise: NoiseChannel::new(),
         }
     }
 
@@ -129,6 +135,12 @@ impl MemoryMap {
     #[must_use]
     pub const fn palette(&self) -> &MonoPalettes {
         &self.palette
+    }
+
+    /// The channel-4 noise generator state (for the APU mixer and tests).
+    #[must_use]
+    pub const fn noise_channel(&self) -> &NoiseChannel {
+        &self.noise
     }
 
     /// The model's open-bus byte for unmapped reads (`$90` mono / `$00` colour,
@@ -282,6 +294,9 @@ impl MemoryMap {
             p @ io::REG_PALMONO_START..=io::REG_PALMONO_END => self
                 .palette
                 .read_palette((p - io::REG_PALMONO_START) as usize),
+            // Live 15-bit noise LFSR (read-only); bit 15 reads 0.
+            io::REG_SND_RANDOM_LO => (self.noise.lfsr_state() & 0xFF) as u8,
+            io::REG_SND_RANDOM_HI => ((self.noise.lfsr_state() >> 8) & 0x7F) as u8,
             // SoC register not modelled yet — explicit gap, not a guessed value.
             _ => self.open_bus(),
         }
@@ -297,6 +312,21 @@ impl MemoryMap {
             p @ io::REG_PALMONO_START..=io::REG_PALMONO_END => {
                 self.palette
                     .write_palette((p - io::REG_PALMONO_START) as usize, value);
+            }
+            // SND_NOISE ($8E): tap mode (bits 0-2), LFSR reset (bit 3), update
+            // enable (bit 4).
+            io::REG_SND_NOISE => {
+                self.noise.set_mode(value & 0x07);
+                self.noise.lfsr_update_enable = value & 0x10 != 0;
+                if value & 0x08 != 0 {
+                    self.noise.reset_lfsr();
+                }
+            }
+            // SND_CTRL ($90): channel-4 enable (bit 3), output select (bit 7:
+            // 0 = wavetable, 1 = noise).
+            io::REG_SND_CTRL => {
+                self.noise.channel_enable = value & 0x08 != 0;
+                self.noise.wave_mode = value & 0x80 == 0;
             }
             _ => {}
         }
@@ -489,5 +519,32 @@ mod tests {
             "colour 0 write-protected"
         );
         assert_eq!(map.palette().pool_index(5, 1), 3, "colour 1 still writes");
+    }
+
+    #[test]
+    fn sound_noise_registers_wire_through_io() {
+        let mut map = MemoryMap::new(Model::Color, None);
+        map.io_write(io::REG_SND_CTRL, 0x88); // ch4 enable (bit3) + noise output (bit7)
+        map.io_write(io::REG_SND_NOISE, 0x13); // LFSR-update enable (bit4) + tap mode 3
+        let ch = map.noise_channel();
+        assert!(ch.channel_enable, "SND_CTRL bit3 -> channel enable");
+        assert!(
+            !ch.wave_mode,
+            "SND_CTRL bit7 set -> noise output, not wavetable"
+        );
+        assert!(
+            ch.lfsr_update_enable,
+            "SND_NOISE bit4 -> LFSR update enable"
+        );
+        // The LFSR read ports reflect the live 15-bit state (bit 15 reads 0).
+        let state = map.noise_channel().lfsr_state();
+        assert_eq!(map.io_read(io::REG_SND_RANDOM_LO), (state & 0xFF) as u8);
+        assert_eq!(
+            map.io_read(io::REG_SND_RANDOM_HI),
+            ((state >> 8) & 0x7F) as u8
+        );
+        // The reset strobe (bit 3) is routed.
+        map.io_write(io::REG_SND_NOISE, 0x08);
+        assert_eq!(map.noise_channel().lfsr_state(), 0);
     }
 }

@@ -12,14 +12,20 @@ use crate::cartridge::WsCartridge;
 use crate::interrupt::InterruptController;
 use crate::io;
 use crate::memory::MemoryMap;
+use crate::serial::Serial;
 use cpu_v30mz::{Cpu, CpuBus, Step};
 use ws_contracts::Model;
 
 /// The routed address space plus the interrupt controller, reached by the CPU
 /// via [`CpuBus`].
+///
+/// The interrupt controller and the serial port live here (not in the memory
+/// map) because both couple to interrupt delivery: disabling the serial port
+/// must lower its level-triggered IRQ lines (community bug #3).
 pub struct Bus {
     map: MemoryMap,
     interrupts: InterruptController,
+    serial: Serial,
 }
 
 impl Bus {
@@ -27,6 +33,7 @@ impl Bus {
         Self {
             map: MemoryMap::new(model, cart),
             interrupts: InterruptController::new(),
+            serial: Serial::new(),
         }
     }
 }
@@ -41,10 +48,11 @@ impl CpuBus for Bus {
     }
 
     fn io_read_u8(&mut self, port: u16) -> u8 {
-        // The machine owns the interrupt controller, so it services $B0; the
-        // memory map routes everything else.
+        // The interrupt controller ($B0) and serial port ($B3) are serviced
+        // here; the memory map routes everything else.
         match port {
             io::REG_INT_BASE => self.interrupts.base(),
+            io::REG_SER_STATUS => self.serial.status_byte(),
             _ => self.map.io_read(port),
         }
     }
@@ -53,6 +61,10 @@ impl CpuBus for Bus {
         match port {
             io::REG_INT_BASE => self.interrupts.set_base(value),
             io::REG_INT_ACK => self.interrupts.acknowledge(value),
+            // Disabling the serial port lowers its level-triggered IRQ lines
+            // (community bug #3) — needs the interrupt controller, so it lives
+            // here rather than in the memory map.
+            io::REG_SER_STATUS => self.serial.write_status(value, &mut self.interrupts),
             _ => self.map.io_write(port, value),
         }
     }
@@ -228,5 +240,37 @@ mod tests {
 
         m.step(); // the NOP at ROM offset 0
         assert_eq!(m.cpu().regs.ip, 0x0001, "executed an instruction from ROM");
+    }
+
+    #[test]
+    fn serial_disable_clears_pending_irqs_through_io() {
+        // Community bug #3 through the real I/O bus: enable the serial port via
+        // $B3, raise its level-triggered IRQs, then disable via $B3 — which must
+        // lower them (else spurious IRQs hang init).
+        let mut bus = Bus::new(Model::Color, None);
+        bus.interrupts
+            .set_enable(Irq::SerialTx.bit() | Irq::SerialRx.bit());
+        bus.io_write_u8(io::REG_SER_STATUS, 0x80); // enable (bit 7)
+        bus.serial.signal_tx_ready(&mut bus.interrupts);
+        bus.serial.signal_rx_ready(&mut bus.interrupts);
+        assert_ne!(bus.interrupts.status() & Irq::SerialTx.bit(), 0);
+        assert_ne!(bus.interrupts.status() & Irq::SerialRx.bit(), 0);
+
+        bus.io_write_u8(io::REG_SER_STATUS, 0x00); // disable
+        assert_eq!(
+            bus.interrupts.status() & Irq::SerialTx.bit(),
+            0,
+            "TX cleared"
+        );
+        assert_eq!(
+            bus.interrupts.status() & Irq::SerialRx.bit(),
+            0,
+            "RX cleared"
+        );
+        assert_eq!(
+            bus.io_read_u8(io::REG_SER_STATUS) & 0x80,
+            0,
+            "status readback shows the port disabled"
+        );
     }
 }
