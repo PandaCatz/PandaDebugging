@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The trace-first interface the CPU uses to reach memory and I/O.
 //!
 //! The CPU never owns RAM, ROM, or devices; it calls out through `CpuBus` so the

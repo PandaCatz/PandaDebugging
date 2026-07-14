@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! V30MZ register file, flags, and 20-bit segmented addressing.
 //!
 //! All facts here are spec-grounded and timing-independent (see

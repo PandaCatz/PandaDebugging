@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! V30MZ arithmetic/logic unit with 8086/80186 flag semantics.
 //!
 //! Each operation updates the [`Flags`] it is given and returns the result.

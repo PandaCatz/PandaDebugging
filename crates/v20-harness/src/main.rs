@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #![forbid(unsafe_code)]
 
 //! Validate `cpu-v30mz` against the SingleStepTests/v20 oracle.

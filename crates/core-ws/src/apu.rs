@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! WonderSwan sound (APU) components.
 //!
 //! Built subsystem-by-subsystem, starting with the pieces that fix documented

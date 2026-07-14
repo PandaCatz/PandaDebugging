@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Owned, validated cartridge boundary.
 //!
 //! Mirrors the project rule that runtime state owns *validated* data and never

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! A minimal WonderSwan machine: it wires the V30MZ to the real address-routing
 //! memory map ([`MemoryMap`]), the I/O ports, and the interrupt controller, and
 //! delivers hardware IRQs before each step.

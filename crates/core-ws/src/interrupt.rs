@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Behavioural model of the WonderSwan interrupt controller.
 //!
 //! Eight hardware lines share one enable/status/ack register triple plus a

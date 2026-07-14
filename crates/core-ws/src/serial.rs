@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! WonderSwan serial port (UART) — the EXT link-cable / WonderWitch interface.
 //!
 //! **Community bug #3 (deep-dive):** disabling the UART must clear its pending

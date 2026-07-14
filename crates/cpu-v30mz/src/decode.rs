@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! ModR/M byte decoding and effective-address computation.
 //!
 //! Covers the 16-bit 8086/V30MZ addressing modes. Segment defaults follow the

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! WonderSwan PPU (display) components.
 
 /// The sprite unit's OAM double-buffering.

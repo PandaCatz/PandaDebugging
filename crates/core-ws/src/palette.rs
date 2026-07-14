@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! WonderSwan palette models.
 //!
 //! **Community bug #5 (deep-dive):** the mono WonderSwan uses a *two-stage*

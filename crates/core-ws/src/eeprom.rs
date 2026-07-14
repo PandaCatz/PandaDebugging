@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! WonderSwan internal EEPROM (stores user settings: name, birthdate, blood
 //! type, theme) with model-correct sizing.
 //!

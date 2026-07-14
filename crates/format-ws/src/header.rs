@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Decoded WonderSwan / WonderSwan Color cartridge footer.
 //!
 //! The internal header occupies the **last 16 bytes** of the ROM image. Because

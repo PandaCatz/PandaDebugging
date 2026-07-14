@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #![forbid(unsafe_code)]
 
 //! Deterministic contracts shared by every WonderSwan crate.

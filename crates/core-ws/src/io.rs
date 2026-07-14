@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! WonderSwan I/O register address map.
 //!
 //! Only addresses explicitly cited in the hardware deep-dive are declared as

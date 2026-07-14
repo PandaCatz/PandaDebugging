@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Instruction execution: `step()` fetches, decodes, and executes one
 //! instruction. This is the growing opcode table; each increment adds a
 //! coherent block with tests. **No cycle counting yet** — the master-vs-CPU

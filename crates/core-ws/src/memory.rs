@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The WonderSwan physical address space — the real memory map.
 //!
 //! Replaces the earlier placeholder flat 1 MiB bus. Routing follows the verified
