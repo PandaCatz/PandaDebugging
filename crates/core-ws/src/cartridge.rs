@@ -5,7 +5,7 @@
 //! that has already passed structural validation and copies out exactly the
 //! bytes the machine will run.
 
-use format_ws::{RomError, RomImage};
+use format_ws::{BusWidth, CartHeader, RomError, RomImage};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
@@ -14,6 +14,7 @@ use std::fmt::{Display, Formatter};
 pub struct WsCartridge {
     rom: Vec<u8>,
     header: [u8; format_ws::HEADER_LEN],
+    decoded: CartHeader,
     stored_checksum: u16,
 }
 
@@ -27,6 +28,7 @@ impl WsCartridge {
         Ok(Self {
             rom: image.bytes().to_vec(),
             header,
+            decoded: image.header(),
             stored_checksum: image.stored_checksum(),
         })
     }
@@ -45,6 +47,20 @@ impl WsCartridge {
     #[must_use]
     pub const fn raw_header(&self) -> &[u8; format_ws::HEADER_LEN] {
         &self.header
+    }
+
+    /// The decoded cartridge footer.
+    #[must_use]
+    pub const fn header(&self) -> CartHeader {
+        self.decoded
+    }
+
+    /// The external ROM bus width this cartridge declares (community bug #9).
+    /// Early carts / the Pocket Challenge V2 use an 8-bit bus; hardcoding 16-bit
+    /// corrupts their reads.
+    #[must_use]
+    pub const fn bus_width(&self) -> BusWidth {
+        self.decoded.bus_width()
     }
 
     #[must_use]
@@ -101,5 +117,27 @@ mod tests {
             WsCartridge::from_bytes(&bytes),
             Err(CartridgeError::Rom(_))
         ));
+    }
+
+    #[test]
+    fn exposes_declared_bus_width() {
+        // Community bug #9: the owned cartridge must report the ROM bus width
+        // declared in the footer flags byte (offset 0x0C, bit 2), so the memory
+        // map can drive an 8-bit bus for early carts instead of hardcoding 16.
+        let flags_off = 64 * 1024 - format_ws::HEADER_LEN + 0x0C;
+
+        let mut eight = vec![0u8; 64 * 1024];
+        eight[flags_off] = 0x00; // bit 2 clear -> 8-bit
+        assert_eq!(
+            WsCartridge::from_bytes(&eight).unwrap().bus_width(),
+            BusWidth::Eight
+        );
+
+        let mut sixteen = vec![0u8; 64 * 1024];
+        sixteen[flags_off] = 0x04; // bit 2 set -> 16-bit
+        assert_eq!(
+            WsCartridge::from_bytes(&sixteen).unwrap().bus_width(),
+            BusWidth::Sixteen
+        );
     }
 }

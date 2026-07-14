@@ -7,15 +7,21 @@
 //! It returns a validated [`RomImage`] view; runtime cores must consume that
 //! view and never re-interpret the raw bytes.
 //!
-//! # Header status
+//! # Header
 //!
 //! A WonderSwan cartridge stores a 16-byte internal header in the *last* 16
-//! bytes of the ROM image, and the 16-bit cartridge checksum is the final two
-//! bytes. The precise byte layout of the remaining header fields (publisher,
-//! game id, ROM/SRAM size codes, mapper/flags, RTC and bus-width bits) is being
-//! transcribed field-by-field against WSMan in Phase 0; until each field is
-//! verified it is intentionally *not* decoded here. [`RomImage::raw_header`]
-//! exposes the bytes so verification work can proceed without guessing.
+//! bytes of the ROM image; the 16-bit checksum is the final two bytes. The
+//! field layout is decoded by [`CartHeader`] (see [`RomImage::header`]), having
+//! been transcribed and adversarially verified against WSMan, the WSdev wiki,
+//! ares, and Mednafen — citations and the resolved source disputes are recorded
+//! in `docs/hardware/06-cartridge.md`. [`RomImage::raw_header`] still exposes
+//! the undecoded bytes.
+
+mod header;
+pub use header::{
+    BusWidth, CartFlags, CartHeader, FarPointer, Mapper, MapperKind, Orientation, RomSize,
+    SaveKind, SaveType, System,
+};
 
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -75,6 +81,17 @@ impl<'a> RomImage<'a> {
         &self.bytes[self.header_offset()..]
     }
 
+    /// The decoded cartridge footer. See [`CartHeader`].
+    #[must_use]
+    pub fn header(&self) -> CartHeader {
+        // `raw_header()` is exactly `HEADER_LEN` bytes by construction (the
+        // image is validated to be at least that long), so this copy is
+        // infallible and never panics.
+        let mut footer = [0u8; HEADER_LEN];
+        footer.copy_from_slice(self.raw_header());
+        CartHeader::decode(&footer)
+    }
+
     /// The 16-bit cartridge checksum as stored in the final two bytes
     /// (little-endian). Always the last field of the header.
     #[must_use]
@@ -83,17 +100,23 @@ impl<'a> RomImage<'a> {
         u16::from_le_bytes([self.bytes[len - 2], self.bytes[len - 1]])
     }
 
-    /// Provisional 16-bit checksum over every byte except the stored checksum
-    /// field, computed as a wrapping sum.
-    ///
-    /// The exact algorithm is pending Phase 0 verification against WSMan; do not
-    /// gate acceptance on it yet. Exposed so the verification harness can
-    /// compare against known-good dumps.
+    /// The 16-bit cartridge checksum: a per-byte sum (mod `0x10000`) over every
+    /// byte of the image except the final two checksum bytes, including any
+    /// padding. Verified against Mednafen's loader and WSdev/WSMan (see
+    /// `docs/hardware/06-cartridge.md`). Not required to be correct to boot.
     #[must_use]
-    pub fn computed_checksum_provisional(&self) -> u16 {
+    pub fn computed_checksum(&self) -> u16 {
         let body = &self.bytes[..self.bytes.len() - 2];
         body.iter()
             .fold(0u16, |acc, &b| acc.wrapping_add(u16::from(b)))
+    }
+
+    /// Whether the [stored][`Self::stored_checksum`] checksum matches the
+    /// [computed][`Self::computed_checksum`] one. Informational only — some
+    /// legitimate carts (e.g. WonderWitch) store `0x0000`.
+    #[must_use]
+    pub fn checksum_valid(&self) -> bool {
+        self.stored_checksum() == self.computed_checksum()
     }
 
     /// Whether the image length is a whole number of 64 KiB banks. Most carts
@@ -166,12 +189,46 @@ mod tests {
     }
 
     #[test]
-    fn provisional_checksum_excludes_the_checksum_field() {
-        // Body bytes 0..=29 sum, wrapping in u16; last two bytes ignored.
-        let bytes = vec![0xFFu8; 32];
+    fn computed_checksum_excludes_the_final_two_bytes() {
+        // Distinct byte values so an off-by-N exclusion changes the result:
+        // body bytes are 1..=30, and the excluded final two are large sentinels
+        // that must NOT appear in the sum.
+        let mut bytes = vec![0u8; 32];
+        for (i, b) in bytes.iter_mut().enumerate().take(30) {
+            *b = (i + 1) as u8;
+        }
+        bytes[30] = 0xAA;
+        bytes[31] = 0xBB;
         let rom = RomImage::parse(&bytes).expect("parses");
-        let expected = (0..30).fold(0u16, |acc, _| acc.wrapping_add(0xFF));
-        assert_eq!(rom.computed_checksum_provisional(), expected);
+        let expected: u16 = (1..=30).sum();
+        assert_eq!(rom.computed_checksum(), expected);
+    }
+
+    #[test]
+    fn checksum_valid_when_stored_matches_computed() {
+        let mut bytes = vec![0x01u8; 64];
+        // Sum of the 62 body bytes (0x01 each), stored little-endian in the
+        // final two bytes, must validate.
+        let sum = 62u16;
+        bytes[62] = sum.to_le_bytes()[0];
+        bytes[63] = sum.to_le_bytes()[1];
+        let rom = RomImage::parse(&bytes).expect("parses");
+        assert!(rom.checksum_valid());
+    }
+
+    #[test]
+    fn header_decodes_from_the_image_footer() {
+        // Place a recognisable footer at the tail and confirm `header()` reads
+        // the same bytes `raw_header()` exposes.
+        let mut bytes = vec![0u8; 64 * 1024];
+        let base = bytes.len() - HEADER_LEN;
+        bytes[base + 0x07] = 0x01; // system = Color
+        bytes[base + 0x0C] = 0x04; // flags: 16-bit bus
+        let rom = RomImage::parse(&bytes).expect("parses");
+        let header = rom.header();
+        assert_eq!(header.system(), System::Color);
+        assert_eq!(header.bus_width(), BusWidth::Sixteen);
+        assert_eq!(header.stored_checksum(), rom.stored_checksum());
     }
 
     #[test]

@@ -15,6 +15,10 @@ every behaviour and flag anything still unverified as an open question.
   cycle-unit question is unresolved and scales all timings by 4×).
 - [`02-interrupts.md`](02-interrupts.md) — line table, priority dispatch, edge/
   level semantics, `REG_INT_*`, and IRQ-timing watch items.
+- [`06-cartridge.md`](06-cartridge.md) — verified cartridge footer layout (field
+  offsets, ROM/save code tables, flags & bus width, mapper/RTC, checksum),
+  resolved source disputes, and open gaps. Grows to cover EEPROM/RTC/serial/input
+  as Phase 6 proceeds.
 
 Planned (added as each phase begins):
 
@@ -23,6 +27,6 @@ Planned (added as each phase begins):
 - `04-apu-sound.md` — channels, unsigned mixing, sweep, noise taps, startup
   latency, HyperVoice.
 - `05-dma.md` — general DMA + SDMA, CPU halt, cart-SRAM source, `5+2n`.
-- `06-cartridge-eeprom-rtc-serial.md` — header layout, EEPROM sizes, S-3511A RTC,
-  UART IRQ clearing, bus width, keypad pull-down.
+- `06-cartridge.md` (extend) — EEPROM sizes, S-3511A RTC, UART IRQ clearing,
+  keypad pull-down (footer layout + bus width already landed).
 - `07-bios-boot.md` — boot ROM, `REG_HW_FLAGS` bank-out timing, HLE fallback.

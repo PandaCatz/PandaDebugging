@@ -13,7 +13,9 @@ almost every game that uses audio or raster effects.
 
 - [x] Pin Rust 1.96.0; workspace with `unsafe_code = "forbid"`, warnings-as-errors.
 - [x] Legal provenance policy for BIOS / test ROMs / games (`docs/LEGAL_PROVENANCE.md`).
-- [ ] Transcribe the ROM header layout from WSMan; decode fields in `format-ws`.
+- [x] Transcribe the ROM header layout (WSMan/WSdev/ares/Mednafen, adversarially
+  verified); decode fields in `format-ws` (`CartHeader`). See
+  `docs/hardware/06-cartridge.md`.
 - [ ] Acquire hardware test ROMs into gitignored `fixtures/` (`docs/TEST_ROMS.md`).
 - [ ] Write the acceptance matrix and choose the reference oracle (ares / Mednafen).
 

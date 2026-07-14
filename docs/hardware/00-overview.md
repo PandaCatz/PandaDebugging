@@ -107,9 +107,11 @@ deadlocks serial-driven games.
 
 ## 6. Cartridge / EEPROM / RTC / serial / input
 
-- ROM header is the **last 16 bytes**; checksum is the final 2 bytes. Exact field
-  layout: verify against WSMan (Phase 0). `REG_HW_FLAGS` bit 0 = BIOS bank-out
-  (0→1 after boot), bit 2 = external bus width (0 = 8-bit, 1 = 16-bit).
+- ROM header is the **last 16 bytes**; checksum is the final 2 bytes. Field
+  layout is decoded and verified in [`06-cartridge.md`](06-cartridge.md)
+  (`format-ws::CartHeader`): footer flags byte (`0x0C`) bit 2 = external bus
+  width (`0` = 8-bit, `1` = 16-bit, community bug #9). The runtime `REG_HW_FLAGS`
+  register (`$A0`) mirrors it and adds bit 0 = BIOS bank-out (0→1 after boot).
 - Internal EEPROM: 512-bit (WS) vs 93C86 16 Kbit (WSC) — games detect the system
   by size. RTC month field is 1-based (Mednafen bug was 0-based).
 - Cartridge RTC: Seiko S-3511A serial via `REG_RTC_STATUS/CMD` (`$CA`),

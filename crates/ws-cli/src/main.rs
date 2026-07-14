@@ -26,16 +26,43 @@ fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             let path = args.get(1).ok_or("usage: ws-cli --rom <path-to-rom>")?;
             let bytes = std::fs::read(path)?;
             let image = format_ws::RomImage::parse(&bytes)?;
+            let header = image.header();
             println!("rom: {} bytes", image.len());
             println!("bank aligned (64 KiB): {}", image.is_bank_aligned());
-            println!("stored checksum:        {:#06x}", image.stored_checksum());
+            println!("system:                 {:?}", header.system());
+            println!("publisher id:           {:#04x}", header.publisher_id());
+            println!("game id:                {:#04x}", header.game_id());
+            println!("version:                {}", header.version());
+            match header.rom_size().bytes() {
+                Some(b) => println!(
+                    "rom size (declared):    {} KiB (code {:#04x})",
+                    b / 1024,
+                    header.rom_size().code()
+                ),
+                None => println!(
+                    "rom size (declared):    unknown (code {:#04x})",
+                    header.rom_size().code()
+                ),
+            }
             println!(
-                "computed (provisional): {:#06x}",
-                image.computed_checksum_provisional()
+                "save:                   {:?} (code {:#04x})",
+                header.save_type().kind(),
+                header.save_type().code()
             );
+            println!("bus width:              {:?}", header.bus_width());
+            println!("orientation:            {:?}", header.flags().orientation());
+            println!(
+                "mapper:                 {:?} (rtc: {})",
+                header.mapper().kind(),
+                header.mapper().has_rtc()
+            );
+            println!("stored checksum:        {:#06x}", image.stored_checksum());
+            println!("computed checksum:      {:#06x}", image.computed_checksum());
+            println!("checksum valid:         {}", image.checksum_valid());
             // Exercise the owned-cartridge boundary.
             let cart = core_ws::WsCartridge::from_image(image)?;
             println!("owned cartridge: {} bytes", cart.rom().len());
+            println!("cart bus width:  {:?}", cart.bus_width());
             Ok(())
         }
         _ => {

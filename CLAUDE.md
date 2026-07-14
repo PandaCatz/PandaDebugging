@@ -38,8 +38,12 @@ Phase 1 (headless skeleton) is complete and green. The workspace contains:
   non-panicking `CoreError`. WonderSwan `Model` (Mono/Color/Crystal) replaces the
   NES region concept.
 - `format-ws`: defensive borrowed ROM parser. Structural validation, footer
-  extraction, stored/provisional checksum. Exact header-field offsets are
-  deliberately *not yet decoded* (Phase 0 task) rather than guessed.
+  extraction, verified checksum, and a fully-decoded typed footer (`CartHeader`):
+  publisher, system, game id, version, ROM-size/save-type code tables, flags
+  (orientation + bus width, bug #9), mapper/RTC, boot far-jump, checksum. Layout
+  adversarially verified vs WSMan/WSdev/ares/Mednafen; see
+  `docs/hardware/06-cartridge.md`. Undocumented codes decode to explicit
+  `Other`/`Unknown`/`None`, never guessed.
 - `cpu-v30mz`: register file, flags (defined bits; MD read-back left open),
   20-bit segmented addressing, `CS:IP = FFFF:0000` reset, the trace-first
   `CpuBus`, instruction fetch, ModR/M decode (all 16-bit modes + segment
@@ -120,13 +124,18 @@ cargo run --release -p ws-cli
 
 ## Latest verified results
 
-Verified on Windows x86-64 with Rust/Cargo 1.96.0 on 2026-07-13:
+Verified on Windows x86-64 with Rust/Cargo 1.96.0 on 2026-07-14:
 
 - `cargo fmt --all -- --check` — pass.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — pass.
-- `cargo test --workspace --all-targets --all-features` — 133 passed, 0 failed
-  (cpu-v30mz 85, core-ws 34, format-ws 6, ws-testkit 5, ws-contracts 3, ws-cli 0).
-- `cargo test --release --workspace` — 133 passed, 0 failed.
+- `cargo test --workspace --all-targets --all-features` — 142 passed, 0 failed
+  (cpu-v30mz 85, core-ws 35, format-ws 14, ws-testkit 5, ws-contracts 3, ws-cli 0).
+- `cargo test --release --workspace` — 142 passed, 0 failed.
+- Cartridge footer layout (bug #9) verified by a 12-agent research workflow
+  (5 source finders → reconcile → 6 adversarial verifiers over WSMan/WSdev/ares/
+  Mednafen/STSWS): fixed the bus-width bit to footer `0x0C` bit 2 (`0`=8/`1`=16)
+  and corrected save-code `0x01` to 32 KiB. `ws-cli --rom` on a crafted footer
+  decodes every field and validates the checksum. See docs/hardware/06-cartridge.md.
 - Community-bug fixes adversarially audited vs WSMan/WSdev/ares (14-agent
   workflow); corrected EEPROM size (128B), color-zero (bit-depth axis), the
   interrupt vector mask + enable-gated raise, LFSR enable-gating, sprite-DMA
@@ -144,26 +153,30 @@ Verified on Windows x86-64 with Rust/Cargo 1.96.0 on 2026-07-13:
 
 ## Next tasks, in order
 
-The driving goal is the community-bug ledger (`docs/COMMUNITY-BUGS.md`): 5 fixed,
-3 partial, 1 remaining, all adversarially audited vs WSMan/WSdev/ares.
+The driving goal is the community-bug ledger (`docs/COMMUNITY-BUGS.md`): 6 fixed,
+3 partial, 0 remaining, all adversarially audited/verified vs WSMan/WSdev/ares.
 
 Done so far: full V30MZ instruction set (V20-validated, zero defined-behaviour
 bugs — `docs/VALIDATION.md`); minimal `core-ws::Machine` with hardware-IRQ
-delivery; and six community-bug subsystems (`apu`, `serial`, `palette`, `eeprom`,
-`ppu`) — currently **isolated modules, not yet wired to a register dispatch**.
+delivery; six community-bug subsystems (`apu`, `serial`, `palette`, `eeprom`,
+`ppu`) — currently **isolated modules, not yet wired to a register dispatch**;
+and the verified cartridge footer decode (bug #9, 8-bit ROM bus) in `format-ws`,
+surfaced as `WsCartridge::bus_width`.
 
-1. **Community bug #9 (8-bit ROM bus):** decode `REG_HW_FLAGS` bit 2 in
-   `format-ws` (a deferred Phase-0 header task) and add a cart bus-width model.
-   Last self-contained fix.
-2. **Real WonderSwan memory map** in `core-ws` (RAM sizing per model, ROM/SRAM
+With #9 done, every ledger row is either fixed or a known partial (the partials
+#1/#7 are blocked on timing). The next pieces are structural, not more isolated
+fixes:
+
+1. **Real WonderSwan memory map** in `core-ws` (RAM sizing per model, ROM/SRAM
    banking, the full I/O register file — from *verified* WSMan/WSdev/libws, with
-   explicit gaps). This replaces the placeholder flat bus AND wires the six fixed
-   subsystems to their registers so the fixes run in a real machine.
-3. **Acquire WSCpuTest** (wf-toolchain build or a prebuilt `.ws`) and boot it on
+   explicit gaps). This replaces the placeholder flat bus AND wires the fixed
+   subsystems to their registers so the fixes run in a real machine. The decoded
+   `CartHeader` now feeds it (bus width, save/ROM sizing, mapper/RTC).
+2. **Acquire WSCpuTest** (wf-toolchain build or a prebuilt `.ws`) and boot it on
    the machine. It's the WonderSwan authority for the still-open questions the
    V20 couldn't settle: undefined flags (shift AF, DIV), the GRP2 count-mask,
    0x0F/0x64-0x67 inert-NOP, and the #3 serial latch-vs-level semantics.
-4. **Resolve the cycle-unit ambiguity** (LFSR/DMA measurement) → then add
+3. **Resolve the cycle-unit ambiguity** (LFSR/DMA measurement) → then add
    per-instruction timing, closing community bugs #1 and #7.
 
 ## Decisions still open
