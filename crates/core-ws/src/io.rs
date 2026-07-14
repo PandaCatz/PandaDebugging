@@ -31,8 +31,22 @@ pub const REG_DMA_END: u16 = 0x048;
 pub const REG_SDMA_START: u16 = 0x04A;
 pub const REG_SDMA_END: u16 = 0x052;
 
+/// System control / hardware flags (`$A0`, `SYSTEM_CTRL1`): boot-ROM lockout
+/// (bit 0, one-way latch), colour-system status (bit 1, read), external ROM bus
+/// width (bit 2, `0`=8-bit/`1`=16-bit), ROM access speed (bit 3), cartridge/
+/// self-test OK (bit 7, read). See `docs/hardware/01-cpu-v30mz.md` §6.
+pub const REG_SYSTEM_CTRL: u16 = 0x0A0;
+
 /// Interrupt vector base: the hardware IVT may live anywhere in the first 64 KiB.
 pub const REG_INT_BASE: u16 = 0x0B0;
+
+/// Standard cartridge mapper bank-select registers (the cartridge I/O block).
+/// `$C0` linear/EX bank (4 bits on Bandai 2001, 6 on 2003), `$C1` SRAM bank,
+/// `$C2` ROM bank 0, `$C3` ROM bank 1 (powers up `$FF`). See §2.
+pub const REG_BANK_LINEAR: u16 = 0x0C0;
+pub const REG_BANK_SRAM: u16 = 0x0C1;
+pub const REG_BANK_ROM0: u16 = 0x0C2;
+pub const REG_BANK_ROM1: u16 = 0x0C3;
 
 /// Keypad matrix read. Unattached matrix lines read 0 (pull-down); some games
 /// refuse to boot if unmapped bits read 1.

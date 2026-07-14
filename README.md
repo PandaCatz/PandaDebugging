@@ -54,7 +54,7 @@ timings are CPU cycles at 3.072 MHz — no hidden 4×). The two timing partials
 confirming the `IN`/`OUT` value on hardware.
 
 Verified on Rust/Cargo 1.96.0 (Windows x86-64): `cargo fmt --check`,
-`cargo clippy --all-targets -- -D warnings`, and **142 tests** all pass in debug
+`cargo clippy --all-targets -- -D warnings`, and **153 tests** all pass in debug
 and release. No `unsafe`; warnings are errors. The same gate runs in
 [CI](https://github.com/PandaCatz/PandaDebugging/actions/workflows/ci.yml) on
 every push.
@@ -73,7 +73,7 @@ instruction or an officially-undefined flag. See
 |------:|------|--------|
 | 0 | Charter, toolchain, fixtures, provenance | 🔨 in progress (toolchain + provenance + verified ROM-header decode done; test-ROM acquisition pending) |
 | 1 | Headless skeleton (contracts, parser, testkit, CLI) | ✅ complete |
-| 2 | V30MZ CPU + interrupt/bus timing | 🔨 CPU runs the **full documented 8086/80186 set** and is **V20-validated** (zero defined-behaviour bugs); machine + hardware-IRQ delivery done. Remaining: real memory map, WSCpuTest, cycle-unit → timing |
+| 2 | V30MZ CPU + interrupt/bus timing | 🔨 CPU runs the **full documented 8086/80186 set** and is **V20-validated** (zero defined-behaviour bugs); machine + hardware-IRQ delivery + the **real memory map** (boots from cartridge ROM) done; cycle-unit **resolved**. Remaining: per-instruction timing, WSCpuTest |
 | 3 | PPU / display (sprite DMA @142, palettes, color-zero) | 🔨 palettes (#5), color-zero (#6), and sprite-DMA-@142 latch/lock (#2) done; pixel rendering pending |
 | 4 | APU / sound (unsigned mixing, LFSR-in-wave-mode, sweep) | 🔨 noise LFSR in wave mode (#4) done; unsigned mixing, sweep, HyperVoice pending |
 | 5 | DMA / SDMA (`5 + 2n`, CPU halt, cart-SRAM source) | ⬜ planned |
@@ -97,7 +97,7 @@ verified evidence are in [`CLAUDE.md`](CLAUDE.md).
 | `ws-contracts` | Deterministic API: integer emulated time, typed video/audio/input packets, the `Core`/`OutputSink` traits, non-panicking errors. | ✅ |
 | `format-ws` | Defensive, borrowed parser for `.ws` / `.wsc` cartridge images. Bytes in, validated view out; typed footer decode (`CartHeader`). | ✅ structural + verified footer |
 | `cpu-v30mz` | NEC V30MZ core. Registers, flags, addressing, reset, `CpuBus`, ModR/M decode, ALU, and a `step()` executor running the documented instruction set. | 🔨 instruction set complete; hardware-IRQ wiring and cycle timing pending |
-| `core-ws` | The WonderSwan machine core. Cartridge boundary, I/O map, interrupt controller, machine + IRQ delivery, and the fixed subsystems: `apu` (#4), `serial` (#3), `palette` (#5), `eeprom` (#8). | 🔨 subsystems landing bug-first; real memory map / full PPU / DMA pending |
+| `core-ws` | The WonderSwan machine core. Cartridge boundary, the real address-routing memory map (RAM per model, `$C0`–`$C3` ROM/SRAM banks, I/O decode, `$A0`), interrupt controller, machine + IRQ delivery (boots from cartridge ROM), and the fixed subsystems: `apu` (#4), `serial` (#3), `palette` (#5), `eeprom` (#8). | 🔨 memory map + boot done; subsystems not yet wired to I/O dispatch; PPU / DMA pending |
 | `ws-testkit` | Deterministic synthetic core + capture sink + stable hashing. Home of the hardware-test-ROM runner (arrives with the CPU). | ✅ synthetic path |
 | `ws-cli` | Headless runner and ROM inspector. | ✅ |
 

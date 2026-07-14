@@ -1,29 +1,30 @@
-//! A minimal WonderSwan machine: it wires the V30MZ to memory, the I/O ports,
-//! and the interrupt controller, and delivers hardware IRQs before each step.
+//! A minimal WonderSwan machine: it wires the V30MZ to the real address-routing
+//! memory map ([`MemoryMap`]), the I/O ports, and the interrupt controller, and
+//! delivers hardware IRQs before each step.
 //!
-//! The memory map here is a **placeholder flat 1 MiB** — enough to run and test
-//! CPU + interrupt integration end-to-end. The real WonderSwan map (internal RAM
-//! sizing per model, ROM/SRAM banking, the full I/O register file, the PPU, and
-//! timers) is future work and must be built from verified WSMan details, not
-//! guessed. Only the doc-cited interrupt registers are wired to I/O so far.
+//! The interrupt ports (`$B0`/`$B6`) are serviced here because the machine owns
+//! the [`InterruptController`]; every other memory and I/O access is routed by
+//! the [`MemoryMap`]. The PPU, APU, DMA engines, and cycle timing are not yet
+//! wired.
 
+use crate::cartridge::WsCartridge;
 use crate::interrupt::InterruptController;
 use crate::io;
+use crate::memory::MemoryMap;
 use cpu_v30mz::{Cpu, CpuBus, Step};
+use ws_contracts::Model;
 
-/// Flat placeholder memory size (power of two so masking wraps cleanly).
-const MEMORY_SIZE: usize = 0x10_0000;
-
-/// Memory + I/O + the interrupt controller, reached by the CPU via [`CpuBus`].
+/// The routed address space plus the interrupt controller, reached by the CPU
+/// via [`CpuBus`].
 pub struct Bus {
-    memory: Vec<u8>,
+    map: MemoryMap,
     interrupts: InterruptController,
 }
 
 impl Bus {
-    fn new() -> Self {
+    fn new(model: Model, cart: Option<WsCartridge>) -> Self {
         Self {
-            memory: vec![0; MEMORY_SIZE],
+            map: MemoryMap::new(model, cart),
             interrupts: InterruptController::new(),
         }
     }
@@ -31,19 +32,19 @@ impl Bus {
 
 impl CpuBus for Bus {
     fn read_u8(&mut self, address: u32) -> u8 {
-        self.memory[(address as usize) & (MEMORY_SIZE - 1)]
+        self.map.read_u8(address)
     }
 
     fn write_u8(&mut self, address: u32, value: u8) {
-        self.memory[(address as usize) & (MEMORY_SIZE - 1)] = value;
+        self.map.write_u8(address, value);
     }
 
     fn io_read_u8(&mut self, port: u16) -> u8 {
+        // The machine owns the interrupt controller, so it services $B0; the
+        // memory map routes everything else.
         match port {
             io::REG_INT_BASE => self.interrupts.base(),
-            // Placeholder: real WS returns $90 (WS) / $00 (WSC) for unmapped
-            // ports, and other registers are not modelled yet.
-            _ => 0x90,
+            _ => self.map.io_read(port),
         }
     }
 
@@ -51,7 +52,7 @@ impl CpuBus for Bus {
         match port {
             io::REG_INT_BASE => self.interrupts.set_base(value),
             io::REG_INT_ACK => self.interrupts.acknowledge(value),
-            _ => {}
+            _ => self.map.io_write(port, value),
         }
     }
 }
@@ -63,23 +64,38 @@ pub struct Machine {
 }
 
 impl Machine {
+    /// A machine with no cartridge, defaulting to the colour model (64 KiB RAM
+    /// covering the whole internal region). Convenient for CPU/interrupt
+    /// integration tests that load code straight into RAM.
     #[must_use]
     pub fn new() -> Self {
+        Self::with(Model::Color, None)
+    }
+
+    /// A machine for `model` running `cart`.
+    #[must_use]
+    pub fn with_cartridge(model: Model, cart: WsCartridge) -> Self {
+        Self::with(model, Some(cart))
+    }
+
+    fn with(model: Model, cart: Option<WsCartridge>) -> Self {
         Self {
             cpu: Cpu::new(),
-            bus: Bus::new(),
+            bus: Bus::new(model, cart),
         }
     }
 
-    /// Copy `bytes` into memory at physical `address` (loader/test helper).
+    /// Copy `bytes` into memory starting at physical `address` (loader/test
+    /// helper). Routed through the memory map, so only writable regions take.
     pub fn load(&mut self, address: u32, bytes: &[u8]) {
-        let base = address as usize;
-        self.bus.memory[base..base + bytes.len()].copy_from_slice(bytes);
+        for (offset, &byte) in bytes.iter().enumerate() {
+            self.bus.map.write_u8(address + offset as u32, byte);
+        }
     }
 
     #[must_use]
     pub fn read(&self, address: u32) -> u8 {
-        self.bus.memory[(address as usize) & (MEMORY_SIZE - 1)]
+        self.bus.map.read_u8(address)
     }
 
     #[must_use]
@@ -191,5 +207,25 @@ mod tests {
         m.step(); // MOV
         m.step(); // OUT
         assert_eq!(m.interrupts_mut().base(), 0x40);
+    }
+
+    #[test]
+    fn boots_from_cartridge_rom_via_the_reset_vector() {
+        // Footer boot far-jump `JMP FAR 2000:0000` → physical 0x20000, the ROM0
+        // window (bank 0 → ROM offset 0), where we place a NOP.
+        let mut rom = vec![0u8; 64 * 1024];
+        rom[0x0000] = 0x90; // NOP, reached after the jump
+        let base = rom.len() - format_ws::HEADER_LEN;
+        rom[base..base + 5].copy_from_slice(&[0xEA, 0x00, 0x00, 0x00, 0x20]);
+        let cart = WsCartridge::from_bytes(&rom).expect("valid cart");
+        let mut m = Machine::with_cartridge(Model::Color, cart);
+
+        // Reset state CS:IP = FFFF:0000 fetches the footer far-jump from ROM.
+        m.step();
+        assert_eq!(m.cpu().regs.cs, 0x2000, "far-jumped into cartridge ROM");
+        assert_eq!(m.cpu().regs.ip, 0x0000);
+
+        m.step(); // the NOP at ROM offset 0
+        assert_eq!(m.cpu().regs.ip, 0x0001, "executed an instruction from ROM");
     }
 }

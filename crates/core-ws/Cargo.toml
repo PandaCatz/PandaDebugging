@@ -6,6 +6,7 @@ version.workspace = true
 license.workspace = true
 
 [dependencies]
+ws-contracts = { path = "../ws-contracts" }
 format-ws = { path = "../format-ws" }
 cpu-v30mz = { path = "../cpu-v30mz" }
 

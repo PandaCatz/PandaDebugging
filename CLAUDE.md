@@ -57,21 +57,24 @@ Phase 1 (headless skeleton) is complete and green. The workspace contains:
   Remaining: hardware IRQ delivery (the machine must consult
   core-ws::InterruptController before each step), a few V30MZ-undocumented slots
   (e.g. 0xF1), and **all cycle timing** (blocked on the cycle-unit question).
-- `core-ws`: cartridge boundary + I/O register map + interrupt-controller model +
-  a minimal `Machine` (CPU + bus + interrupt controller) with hardware-IRQ
-  delivery, plus the audited community-bug subsystems: `apu` (noise LFSR, #4),
-  `serial` (UART, #3), `palette` (pool + color-zero, #5/#6), `eeprom` (#8),
-  `ppu::SpriteUnit` (sprite double-buffer, #2). **These subsystems are isolated
-  and unit-tested but not yet wired to a register dispatch.** The machine's
-  memory map is a **placeholder flat 1 MiB** — the real WonderSwan map (RAM
-  sizing, ROM/SRAM banking, full I/O) is the next big piece.
+- `core-ws`: cartridge boundary + `memory::MemoryMap` (the **real** address-
+  routing map) + interrupt-controller model + a `Machine` (CPU + bus + interrupt
+  controller) with hardware-IRQ delivery that **boots from cartridge ROM via the
+  reset vector**, plus the audited community-bug subsystems: `apu` (noise LFSR,
+  #4), `serial` (UART, #3), `palette` (pool + color-zero, #5/#6), `eeprom` (#8),
+  `ppu::SpriteUnit` (sprite double-buffer, #2). The memory map routes internal
+  RAM (16 KiB mono / 64 KiB colour), the cartridge ROM/SRAM bank windows
+  (`$C0`–`$C3`), the I/O three-way decode, `$A0` system control, and open-bus
+  reads — from the decoded `CartHeader`. **The community-bug subsystems are still
+  isolated and unit-tested — not yet wired to the map's I/O dispatch.**
 - `ws-testkit`: deterministic synthetic core, capture sink, stable FNV-64 hashes.
 - `ws-cli`: headless synthetic run + `--rom` inspector (no ROM bytes logged).
 - `v20-harness`: runs the V20 single-step oracle against `cpu-v30mz`.
 
-Not implemented yet: the real WonderSwan memory map wiring, the general-purpose /
-sound DMA engines, RTC, pixel rendering, the BIOS boot path, save/state, timing,
-and any frontend. This is **not** a playable emulator yet.
+Not implemented yet: wiring the fixed subsystems to the memory map's I/O
+dispatch, the boot-ROM overlay, the internal-EEPROM/RTC register protocols, the
+DMA engines, pixel rendering, save/state, timing, and any frontend. This is
+**not** a playable emulator yet.
 
 ## Completed work
 
@@ -131,9 +134,14 @@ Verified on Windows x86-64 with Rust/Cargo 1.96.0 on 2026-07-14:
 
 - `cargo fmt --all -- --check` — pass.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — pass.
-- `cargo test --workspace --all-targets --all-features` — 142 passed, 0 failed
-  (cpu-v30mz 85, core-ws 35, format-ws 14, ws-testkit 5, ws-contracts 3, ws-cli 0).
-- `cargo test --release --workspace` — 142 passed, 0 failed.
+- `cargo test --workspace --all-targets --all-features` — 153 passed, 0 failed
+  (cpu-v30mz 85, core-ws 46, format-ws 14, ws-testkit 5, ws-contracts 3, ws-cli 0).
+- `cargo test --release --workspace` — 153 passed, 0 failed.
+- Real memory map (`core-ws::memory`): internal RAM per model, cartridge ROM/SRAM
+  bank windows, I/O three-way decode, `$A0`, open-bus. `Machine::with_cartridge`
+  boots from ROM via the reset vector (test `boots_from_cartridge_rom_via_the_reset_vector`).
+  Adversarial review caught + fixed a `$C0` power-up bug (reset vector missed the
+  footer on ROMs > 1 MiB); locked with a multi-size test.
 - Cartridge footer layout (bug #9) verified by a 12-agent research workflow
   (5 source finders → reconcile → 6 adversarial verifiers over WSMan/WSdev/ares/
   Mednafen/STSWS): fixed the bus-width bit to footer `0x0C` bit 2 (`0`=8/`1`=16)
@@ -160,27 +168,28 @@ The driving goal is the community-bug ledger (`docs/COMMUNITY-BUGS.md`): 6 fixed
 3 partial, 0 remaining, all adversarially audited/verified vs WSMan/WSdev/ares.
 
 Done so far: full V30MZ instruction set (V20-validated, zero defined-behaviour
-bugs — `docs/VALIDATION.md`); minimal `core-ws::Machine` with hardware-IRQ
-delivery; six community-bug subsystems (`apu`, `serial`, `palette`, `eeprom`,
-`ppu`) — currently **isolated modules, not yet wired to a register dispatch**;
-and the verified cartridge footer decode (bug #9, 8-bit ROM bus) in `format-ws`,
-surfaced as `WsCartridge::bus_width`.
+bugs — `docs/VALIDATION.md`); `core-ws::Machine` with hardware-IRQ delivery over
+the **real address-routing memory map** (`memory::MemoryMap`) that boots from
+cartridge ROM via the reset vector; the verified cartridge footer decode (bug #9)
+in `format-ws`; and the cycle-unit ambiguity **resolved** (CPU cycles, no ×4).
+The six community-bug subsystems (`apu`, `serial`, `palette`, `eeprom`, `ppu`)
+are still **isolated modules, not yet wired to the map's I/O dispatch**.
 
-With #9 done, every ledger row is either fixed or a known partial (the partials
-#1/#7 are blocked on timing). The next pieces are structural, not more isolated
-fixes:
+Next pieces, in order:
 
-1. **Real WonderSwan memory map** in `core-ws` (RAM sizing per model, ROM/SRAM
-   banking, the full I/O register file — from *verified* WSMan/WSdev/libws, with
-   explicit gaps). This replaces the placeholder flat bus AND wires the fixed
-   subsystems to their registers so the fixes run in a real machine. The decoded
-   `CartHeader` now feeds it (bus width, save/ROM sizing, mapper/RTC).
-2. **Acquire WSCpuTest** (wf-toolchain build or a prebuilt `.ws`) and boot it on
-   the machine. It's the WonderSwan authority for the still-open questions the
-   V20 couldn't settle: undefined flags (shift AF, DIV), the GRP2 count-mask,
-   0x0F/0x64-0x67 inert-NOP, and the #3 serial latch-vs-level semantics.
-3. **Resolve the cycle-unit ambiguity** (LFSR/DMA measurement) → then add
-   per-instruction timing, closing community bugs #1 and #7.
+1. **Wire the fixed subsystems to the memory map's I/O dispatch** so the
+   community-bug fixes run inside the real machine (APU ports, palette/PPU regs,
+   serial `$B0`-area regs, internal-EEPROM `$B8`–`$BF` protocol). The map's
+   `io_read`/`io_write` currently model `$A0` + the `$C0`–`$C3` banks and leave
+   the rest as explicit open-bus gaps.
+2. **Per-instruction timing** — now unblocked (unit resolved to CPU cycles).
+   Build the master-clock scheduler (CPU cost ×4), closing bugs #1 and #7 once
+   the `IN`/`OUT` value is measured.
+3. **Acquire WSCpuTest** (wf-toolchain build or a prebuilt `.ws`) and boot it on
+   the machine — the authority for the still-open flag questions (shift AF, DIV,
+   GRP2 count-mask, `0x0F`/`0x64`–`0x67` inert-NOP) and the #3 serial semantics.
+4. Later structural work: the boot-ROM overlay, the DMA engines, PPU pixel
+   rendering, RTC.
 
 ## Decisions still open
 
