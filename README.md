@@ -30,22 +30,28 @@ behaviour the others get wrong.
 
 ## Community-bug scorecard
 
-**6 fixed · 3 partial · 0 pending** (of 9). *Partial* means the behaviour is done
-but a timing value or an open hardware question remains. Every fix was
-**adversarially audited against WSMan / WSdev / ares** (the audit corrected
-several — see the ledger's *Audit-corrected* notes).
+For each documented bug, the **correct behaviour is implemented and pinned by a
+unit test** (adversarially researched against WSMan / WSdev / ares — the audit
+corrected several; see the ledger's *Audit-corrected* notes). The ✅ marks that
+bar. It does **not** mean the bug is demonstrated fixed in a running game.
 
-| # | Documented bug | Status |
-|--:|----------------|--------|
-| 2 | Sprite DMA → **tearing** | ✅ fixed (`core-ws::ppu` — double-buffered) |
-| 4 | Noise LFSR frozen in wave mode → *Clock Tower* **hangs** | ✅ fixed (`core-ws::apu`) |
-| 5 | Monochrome palette pool indirection → **wrong shading** | ✅ fixed (`core-ws::palette`) |
-| 6 | Color-zero transparency (keyed on bit depth) | ✅ fixed (`core-ws::palette`) |
-| 8 | Internal EEPROM size → **WS/WSC mis-detection** | ✅ fixed (`core-ws::eeprom`) |
-| 9 | 8-bit ROM bus width (Pocket Challenge V2, early carts) | ✅ fixed (`format-ws` footer → `bus_width`) |
-| 1 | V30MZ interrupt handling (priority, edge/level, IVT) | 🔨 behaviour + CPU delivery done; timing pending |
-| 3 | UART disable → startup **lockups** | 🔨 lockup fixed; a latch question + data path open |
-| 7 | I/O port access timing (`IN`/`OUT` cost) | 🔨 data validated; cycle *value* pending |
+> **What this does *not* yet claim.** The core is **not playable**, and **none of
+> these has been validated against a hardware test ROM or a reference-emulator
+> oracle diff** — the project's own gold standard, still pending (no WonderSwan
+> test ROMs acquired). The right-hand column shows how far each fix is actually
+> integrated; several run only as isolated, unit-tested logic.
+
+| # | Documented bug | Logic + test | Integrated in the machine |
+|--:|----------------|:--:|----|
+| 2 | Sprite DMA → **tearing** | ✅ `core-ws::ppu` | ⬜ sprite unit not wired in |
+| 4 | Noise LFSR → *Clock Tower* **hangs** | ✅ `core-ws::apu` | ◑ registers wired; **LFSR not clocked yet** |
+| 5 | Mono palette pool → **wrong shading** | ✅ `core-ws::palette` | ◑ wired to I/O; no PPU rendering |
+| 6 | Color-zero (by bit depth) | ✅ `core-ws::palette` | ◑ wired to I/O; no PPU rendering |
+| 8 | Internal EEPROM size | ✅ `core-ws::eeprom` | ⬜ not wired (Microwire protocol unbuilt) |
+| 9 | 8-bit ROM bus width | ✅ `format-ws` footer | ◑ decoded + exposed; bus behaviour not acted on |
+| 1 | V30MZ interrupt handling | 🔨 behaviour + V20-validated | ✅ delivered before each step |
+| 3 | UART disable → **lockups** | 🔨 lockup path | ✅ disable→clear-IRQ runs via `$B3` |
+| 7 | I/O port timing (`IN`/`OUT`) | 🔨 data validated | ⬜ no timing yet |
 
 ## Status
 
