@@ -33,7 +33,7 @@ pub mod serial;
 
 pub use apu::{NoiseChannel, NoiseLfsr};
 pub use cartridge::{CartridgeError, WsCartridge};
-pub use eeprom::InternalEeprom;
+pub use eeprom::{InternalEeprom, InternalEepromPort};
 pub use interrupt::{InterruptController, Irq, Trigger};
 pub use machine::{Bus, Machine};
 pub use memory::MemoryMap;

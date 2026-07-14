@@ -47,7 +47,7 @@ bar. It does **not** mean the bug is demonstrated fixed in a running game.
 | 4 | Noise LFSR → *Clock Tower* **hangs** | ✅ `core-ws::apu` | ◑ registers wired; **LFSR not clocked yet** |
 | 5 | Mono palette pool → **wrong shading** | ✅ `core-ws::palette` | ◑ wired to I/O; no PPU rendering |
 | 6 | Color-zero (by bit depth) | ✅ `core-ws::palette` | ◑ wired to I/O; no PPU rendering |
-| 8 | Internal EEPROM size | ✅ `core-ws::eeprom` | ⬜ not wired (Microwire protocol unbuilt) |
+| 8 | Internal EEPROM size | ✅ `core-ws::eeprom` | ✅ size-aliasing runs via `$BA`–`$BE` (write-protect protocol deferred) |
 | 9 | 8-bit ROM bus width | ✅ `format-ws` footer | ◑ decoded + exposed; bus behaviour not acted on |
 | 1 | V30MZ interrupt handling | 🔨 behaviour + V20-validated | ✅ delivered before each step |
 | 3 | UART disable → **lockups** | 🔨 lockup path | ✅ disable→clear-IRQ runs via `$B3` |

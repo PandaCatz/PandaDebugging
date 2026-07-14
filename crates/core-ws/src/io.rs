@@ -80,8 +80,9 @@ pub const REG_KEYPAD: u16 = 0x0B5;
 
 // Internal EEPROM ($B8-$BF block). Verified vs libws/WSdev/ares (canonical
 // high-nibble strobe layout on $BE; two documented wrong layouts were refuted).
-// NOT yet wired: `InternalEeprom` needs the Microwire command state machine —
-// see docs/hardware/07-io-registers.md for the protocol.
+// Wired via `InternalEepromPort` (register-window model, Mednafen/BizHawk/Cygne);
+// the Microwire write-protect/EWEN protocol is a deferred refinement. See
+// docs/hardware/07-io-registers.md.
 
 /// Internal-EEPROM 16-bit data buffer (`$BA` lo / `$BB` hi).
 pub const REG_IEEP_DATA_LO: u16 = 0x0BA;

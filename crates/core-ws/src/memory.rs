@@ -24,6 +24,7 @@
 
 use crate::apu::NoiseChannel;
 use crate::cartridge::WsCartridge;
+use crate::eeprom::InternalEepromPort;
 use crate::io;
 use crate::palette::MonoPalettes;
 use format_ws::{BusWidth, MapperKind, SaveKind};
@@ -94,6 +95,8 @@ pub struct MemoryMap {
     /// registers are wired; the LFSR only *advances* once a sound clock drives
     /// `tick()` (pending the timing scheduler).
     noise: NoiseChannel,
+    /// Internal settings EEPROM (`$BA`–`$BE`), community bug #8 (model-sized).
+    eeprom: InternalEepromPort,
 }
 
 impl MemoryMap {
@@ -128,6 +131,7 @@ impl MemoryMap {
             system_ctrl,
             palette: MonoPalettes::new(),
             noise: NoiseChannel::new(),
+            eeprom: InternalEepromPort::new(matches!(model, Model::Color | Model::Crystal)),
         }
     }
 
@@ -141,6 +145,12 @@ impl MemoryMap {
     #[must_use]
     pub const fn noise_channel(&self) -> &NoiseChannel {
         &self.noise
+    }
+
+    /// The internal EEPROM port (for save/state and tests).
+    #[must_use]
+    pub const fn eeprom(&self) -> &InternalEepromPort {
+        &self.eeprom
     }
 
     /// The model's open-bus byte for unmapped reads (`$90` mono / `$00` colour,
@@ -251,8 +261,8 @@ impl MemoryMap {
         match Self::route(port) {
             IoBlock::Cartridge => self.cart_io_read(port),
             IoBlock::Soc => self.soc_io_read(port),
-            // Internal EEPROM protocol not wired yet.
-            IoBlock::Eeprom | IoBlock::OpenBus => self.open_bus(),
+            IoBlock::Eeprom => self.eeprom_io_read(port),
+            IoBlock::OpenBus => self.open_bus(),
         }
     }
 
@@ -260,7 +270,31 @@ impl MemoryMap {
         match Self::route(port) {
             IoBlock::Cartridge => self.cart_io_write(port, value),
             IoBlock::Soc => self.soc_io_write(port, value),
-            IoBlock::Eeprom | IoBlock::OpenBus => {}
+            IoBlock::Eeprom => self.eeprom_io_write(port, value),
+            IoBlock::OpenBus => {}
+        }
+    }
+
+    fn eeprom_io_read(&self, port: u16) -> u8 {
+        match port {
+            io::REG_IEEP_DATA_LO => self.eeprom.read_data(false),
+            io::REG_IEEP_DATA_HI => self.eeprom.read_data(true),
+            io::REG_IEEP_CMD_LO => self.eeprom.addr_byte(false),
+            io::REG_IEEP_CMD_HI => self.eeprom.addr_byte(true),
+            io::REG_IEEP_CTRL => self.eeprom.status(),
+            // $B8/$B9/$BF: not modelled.
+            _ => self.open_bus(),
+        }
+    }
+
+    fn eeprom_io_write(&mut self, port: u16, value: u8) {
+        match port {
+            io::REG_IEEP_DATA_LO => self.eeprom.write_data(false, value),
+            io::REG_IEEP_DATA_HI => self.eeprom.write_data(true, value),
+            io::REG_IEEP_CMD_LO => self.eeprom.set_addr(false, value),
+            io::REG_IEEP_CMD_HI => self.eeprom.set_addr(true, value),
+            io::REG_IEEP_CTRL => self.eeprom.set_command(value),
+            _ => {}
         }
     }
 
@@ -546,5 +580,42 @@ mod tests {
         // The reset strobe (bit 3) is routed.
         map.io_write(io::REG_SND_NOISE, 0x08);
         assert_eq!(map.noise_channel().lfsr_state(), 0);
+    }
+
+    #[test]
+    fn eeprom_size_detection_through_io_dispatch() {
+        // Community bug #8 through the real $BA-$BE I/O path: probe the internal
+        // EEPROM size via address aliasing. Mono (WS, 64 words) aliases word 64
+        // to word 0; Color (WSC, 1024 words) does not.
+        let mut ws = MemoryMap::new(Model::Mono, None);
+        ws.io_write(io::REG_IEEP_CMD_HI, 0);
+        ws.io_write(io::REG_IEEP_CMD_LO, 0); // word address 0
+        ws.io_write(io::REG_IEEP_DATA_LO, 0x11);
+        ws.io_write(io::REG_IEEP_CMD_LO, 64); // word 64 -> byte 128 -> aliases to 0
+        assert_eq!(
+            ws.io_read(io::REG_IEEP_DATA_LO),
+            0x11,
+            "WS aliases word 64->0"
+        );
+
+        let mut wsc = MemoryMap::new(Model::Color, None);
+        wsc.io_write(io::REG_IEEP_CMD_HI, 0);
+        wsc.io_write(io::REG_IEEP_CMD_LO, 0);
+        wsc.io_write(io::REG_IEEP_DATA_LO, 0x11);
+        wsc.io_write(io::REG_IEEP_CMD_LO, 64);
+        wsc.io_write(io::REG_IEEP_DATA_LO, 0x22); // independent word 64
+        wsc.io_write(io::REG_IEEP_CMD_LO, 0);
+        assert_eq!(
+            wsc.io_read(io::REG_IEEP_DATA_LO),
+            0x11,
+            "WSC word 0 is independent of word 64"
+        );
+        // $BE status readback is synthetic-ready after a write strobe.
+        wsc.io_write(io::REG_IEEP_CTRL, 0x20);
+        assert_ne!(
+            wsc.io_read(io::REG_IEEP_CTRL) & 0x02,
+            0,
+            "write strobe -> ready"
+        );
     }
 }

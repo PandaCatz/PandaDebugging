@@ -134,13 +134,13 @@ Verified on Windows x86-64 with Rust/Cargo 1.96.0 on 2026-07-14:
 
 - `cargo fmt --all -- --check` — pass.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — pass.
-- `cargo test --workspace --all-targets --all-features` — 157 passed, 0 failed
-  (cpu-v30mz 85, core-ws 50, format-ws 14, ws-testkit 5, ws-contracts 3, ws-cli 0).
-- `cargo test --release --workspace` — 157 passed, 0 failed.
-- Palette (#5/#6), serial (#3), and noise registers (#4) wired into the machine's
-  I/O dispatch; verified register maps in `docs/hardware/07-io-registers.md`.
-  Proven by `palette_registers_wire_through_io_dispatch`,
-  `serial_disable_clears_pending_irqs_through_io`, `sound_noise_registers_wire_through_io`.
+- `cargo test --workspace --all-targets --all-features` — 161 passed, 0 failed
+  (cpu-v30mz 85, core-ws 54, format-ws 14, ws-testkit 5, ws-contracts 3, ws-cli 0).
+- `cargo test --release --workspace` — 161 passed, 0 failed.
+- Palette (#5/#6), serial (#3), noise registers (#4), and internal-EEPROM size
+  (#8) wired into the machine's I/O dispatch; verified register maps in
+  `docs/hardware/07-io-registers.md`. EEPROM proven end-to-end by
+  `eeprom_size_detection_through_io_dispatch` (WS aliases word 64→0, WSC doesn't).
 - Real memory map (`core-ws::memory`): internal RAM per model, cartridge ROM/SRAM
   bank windows, I/O three-way decode, `$A0`, open-bus. `Machine::with_cartridge`
   boots from ROM via the reset vector (test `boots_from_cartridge_rom_via_the_reset_vector`).
@@ -180,23 +180,23 @@ Wired into the machine's I/O dispatch so far: the mono **palette** (#5/#6, `$1C`
 `$3F`, in `MemoryMap`), the **serial port** (#3, `$B3` — disabling clears its
 IRQs, wired in `Bus` because it couples to the interrupt controller), and the
 **noise-channel registers** (#4, `$8E`/`$90`/`$92`–`$93` — set-up works; the LFSR
-*advance* awaits the sound clock). All three register maps are verified
-(`docs/hardware/07-io-registers.md`). Not yet wired: the **internal EEPROM** (#8,
-register map verified, but the `$B8`–`$BF` Microwire command state machine isn't
-built) and the **PPU** (#2).
+*advance* awaits the sound clock), and the **internal EEPROM** (#8, `$BA`–`$BE`
+`InternalEepromPort`, register-window model — size-aliasing runs through the real
+I/O path; the Microwire write-protect protocol is a deferred refinement). All
+register maps are verified (`docs/hardware/07-io-registers.md`). Not yet wired:
+the **PPU** (#2).
 
 Next pieces, in order:
 
 1. **Finish wiring the fixed subsystems.** Done: palette (#5/#6), serial (#3),
-   noise registers (#4). Remaining:
-   - **Internal EEPROM (#8):** build the Microwire command state machine on
-     `InternalEeprom` and wire the `$B8`–`$BF` block. Full verified protocol +
-     register map: `docs/hardware/07-io-registers.md`. (`InternalEeprom` is
-     currently a raw byte store with no command protocol.)
+   noise registers (#4), internal EEPROM size (#8). Remaining:
    - **APU LFSR advance (#4):** the noise registers are wired, but `NoiseChannel::
      tick()` needs driving by the sound clock — blocked on the timing scheduler
      (task 2). Until then, Clock Tower's running-LFSR read returns a static value.
    - **PPU (#2):** the sprite unit / display registers, gated on PPU rendering.
+   - **EEPROM write-protect refinement (#8):** the register-window model is wired;
+     the ares-accurate Microwire write-protect / EWEN-EWDS protocol (a separate
+     accuracy concern) is deferred. Protocol in `docs/hardware/07-io-registers.md`.
 2. **Per-instruction timing** — now unblocked (unit resolved to CPU cycles).
    Build the master-clock scheduler (CPU cost ×4), closing bugs #1 and #7 once
    the `IN`/`OUT` value is measured.

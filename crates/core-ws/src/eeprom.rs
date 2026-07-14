@@ -75,6 +75,99 @@ impl InternalEeprom {
     }
 }
 
+/// The internal-EEPROM register interface (`$BA`–`$BE`): the settings store plus
+/// the address and command latches.
+///
+/// Models the **register-window** behaviour shared by Mednafen, BizHawk, and
+/// Cygne — the data ports are a live window into the store at the current word
+/// address, and `$BE` returns synthetic ready/done status (operations complete
+/// instantly). This delivers community bug #8 (WS-vs-WSC size detection) through
+/// the model-sized address aliasing of [`InternalEeprom`].
+///
+/// Not modelled: the Microwire write-protect / EWEN-EWDS command protocol (the
+/// ares-accurate behaviour). It is a separate accuracy concern, not part of the
+/// size-detection bug — see `docs/hardware/07-io-registers.md`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InternalEepromPort {
+    eeprom: InternalEeprom,
+    /// Word address latched from `$BC` (low) / `$BD` (high).
+    address: u16,
+    /// Last `$BE` command byte (read back as synthetic status).
+    command: u8,
+}
+
+impl InternalEepromPort {
+    #[must_use]
+    pub fn new(is_color: bool) -> Self {
+        Self {
+            eeprom: InternalEeprom::for_color(is_color),
+            address: 0,
+            command: 0,
+        }
+    }
+
+    /// Byte offset for the current word address (`high` selects the high byte).
+    /// The store aliases model-sized, which is what a game probes for the size.
+    const fn byte_addr(&self, high: bool) -> usize {
+        ((self.address as usize) << 1) | (high as usize)
+    }
+
+    /// Read a data byte: `$BA` (low) / `$BB` (high) at the current word address.
+    #[must_use]
+    pub fn read_data(&self, high: bool) -> u8 {
+        self.eeprom.read(self.byte_addr(high))
+    }
+
+    /// Write a data byte: `$BA` (low) / `$BB` (high) at the current word address.
+    pub fn write_data(&mut self, high: bool, value: u8) {
+        let addr = self.byte_addr(high);
+        self.eeprom.write(addr, value);
+    }
+
+    /// Set the word-address low (`$BC`) or high (`$BD`) byte.
+    pub const fn set_addr(&mut self, high: bool, value: u8) {
+        if high {
+            self.address = (self.address & 0x00FF) | ((value as u16) << 8);
+        } else {
+            self.address = (self.address & 0xFF00) | value as u16;
+        }
+    }
+
+    /// Address register readback: `$BC` (low) / `$BD` (high).
+    #[must_use]
+    pub const fn addr_byte(&self, high: bool) -> u8 {
+        if high {
+            (self.address >> 8) as u8
+        } else {
+            self.address as u8
+        }
+    }
+
+    /// Latch a `$BE` command byte.
+    pub const fn set_command(&mut self, value: u8) {
+        self.command = value;
+    }
+
+    /// The `$BE` status read: synthetic ready (bit 1) / read-done (bit 0), since
+    /// operations complete instantly (Mednafen/BizHawk/Cygne behaviour).
+    #[must_use]
+    pub const fn status(&self) -> u8 {
+        if self.command & 0x20 != 0 {
+            self.command | 0x02
+        } else if self.command & 0x10 != 0 {
+            self.command | 0x01
+        } else {
+            self.command | 0x03
+        }
+    }
+
+    /// The backing settings store (for save/state and tests).
+    #[must_use]
+    pub const fn eeprom(&self) -> &InternalEeprom {
+        &self.eeprom
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,5 +202,48 @@ mod tests {
             0x55,
             "WSC has real storage at address 128"
         );
+    }
+
+    #[test]
+    fn port_data_window_round_trips_at_the_addressed_word() {
+        let mut port = InternalEepromPort::new(true); // WSC
+        port.set_addr(false, 0x05); // word address 5
+        port.set_addr(true, 0x00);
+        port.write_data(false, 0xAA); // $BA
+        port.write_data(true, 0x55); // $BB
+        assert_eq!(port.read_data(false), 0xAA);
+        assert_eq!(port.read_data(true), 0x55);
+        assert_eq!(port.addr_byte(false), 0x05);
+    }
+
+    #[test]
+    fn port_status_reports_synthetic_ready_done() {
+        let mut port = InternalEepromPort::new(false);
+        port.set_command(0x20); // WRITE strobe -> ready (bit 1)
+        assert_ne!(port.status() & 0x02, 0);
+        port.set_command(0x10); // READ strobe -> read-done (bit 0)
+        assert_ne!(port.status() & 0x01, 0);
+        port.set_command(0x00); // idle -> both set
+        assert_eq!(port.status() & 0x03, 0x03);
+    }
+
+    /// Community bug #8 through the register interface: the small (WS) device
+    /// aliases, so a probe past its size reads earlier data; the large (WSC)
+    /// device has independent storage there.
+    #[test]
+    fn size_detection_via_address_aliasing_through_the_ports() {
+        // WS: 128 bytes = 64 words. Word 64 -> byte 128 -> aliases to word 0.
+        let mut ws = InternalEepromPort::new(false);
+        ws.write_data(false, 0x11); // word 0
+        ws.set_addr(false, 64);
+        assert_eq!(ws.read_data(false), 0x11, "WS aliases word 64 to word 0");
+
+        // WSC: 2048 bytes = 1024 words. Word 64 is independent storage.
+        let mut wsc = InternalEepromPort::new(true);
+        wsc.write_data(false, 0x11); // word 0
+        wsc.set_addr(false, 64);
+        wsc.write_data(false, 0x22); // word 64
+        wsc.set_addr(false, 0);
+        assert_eq!(wsc.read_data(false), 0x11, "WSC word 0 is unchanged");
     }
 }

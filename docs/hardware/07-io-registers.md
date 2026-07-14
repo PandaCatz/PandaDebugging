@@ -47,7 +47,15 @@ Disabling the port (clearing `$B3` bit 7) must lower the level-triggered
 PROTECT `0x80`. `$BE` read status: bit 1 (`0x02`) ready/idle, bit 0 (`0x01`)
 read-done.
 
-### Microwire command protocol (for the not-yet-built state machine)
+### Command protocol
+
+**Implemented:** the register-window model (Mednafen / BizHawk / Cygne) —
+`core-ws::InternalEepromPort`. `$BA`/`$BB` are a live data window into the store
+at the current word address (`$BC`/`$BD`), and `$BE` returns synthetic ready/done
+status. This delivers bug #8 (size detection via the model-sized address
+aliasing). **Deferred refinement:** the full Microwire write-protect / EWEN-EWDS
+behaviour below (the ares-accurate model) — a separate accuracy concern, not the
+size bug.
 
 93Cxx serial EEPROM: WS mono = 93C46 (64×16), WSC/SwanCrystal = 93C86 (1024×16).
 Command word (`$BC`/`$BD`) = START(1) + 2-bit opcode + address; `word_addr =
