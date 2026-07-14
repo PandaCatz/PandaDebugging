@@ -2,115 +2,101 @@
 
 [![CI](https://github.com/PandaCatz/PandaDebugging/actions/workflows/ci.yml/badge.svg)](https://github.com/PandaCatz/PandaDebugging/actions/workflows/ci.yml)
 [![Rust](https://img.shields.io/badge/rust-1.96.0-informational?logo=rust)](rust-toolchain.toml)
-[![License: PolyForm NC 1.0.0](https://img.shields.io/badge/license-PolyForm%20NC%201.0.0-lightgrey)](https://polyformproject.org/licenses/noncommercial/1.0.0/)
-[![Milestone](https://img.shields.io/github/v/release/PandaCatz/PandaDebugging?label=milestone&color=blue)](https://github.com/PandaCatz/PandaDebugging/releases)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/PandaCatz/PandaDebugging?label=release&color=blueviolet)](https://github.com/PandaCatz/PandaDebugging/releases)
 
-A deterministic, independently testable WonderSwan / WonderSwan Color emulator
-core in Rust, built to be *accurate first*: every hardware behaviour is measured
-or cited before it is claimed to work.
+A deterministic, independently testable **WonderSwan / WonderSwan Color** emulator
+core in Rust. Its purpose is narrow: **fix the accuracy bugs that recur across
+every existing WonderSwan emulator**, and prove each fix against a hardware test
+ROM or a reference-emulator oracle — never by "it looks right."
 
-The project exists to fix the specific accuracy bugs that recur across existing
-WonderSwan emulators — V30MZ CPU/interrupt timing, sprite DMA tearing, the
-monochrome palette pool, color-zero handling, the noise LFSR, sound mixing, DMA
-cycle cost, EEPROM/RTC/serial edge cases — with each fix backed by a hardware
-test ROM or a reference-emulator oracle diff, never by "it looks right."
+> **Not a playable emulator yet.** The CPU is complete and hardware-validated and
+> the machine boots from cartridge ROM, but the subsystems are not yet wired into
+> a full running console. Honest status is below.
 
-## Community bugs — the scorecard
+---
 
-The point of this project is to fix the
-[documented WonderSwan emulation bugs](docs/COMMUNITY-BUGS.md) that recur across
-Mednafen/Beetle, ares, Oswan, and Swan.emu. Every fix ships with a named test
-pinning the behaviour those emulators get wrong, and each has been
-**adversarially audited against primary sources (WSMan, WSdev) and ares** — the
-audit corrected several (see the ledger's *Audit-corrected* notes).
+## Why this exists
 
-**6 fixed · 3 partial · 0 remaining** (of 9)
+A handful of WonderSwan behaviours are emulated wrong the *same way* across
+Mednafen/Beetle, ares, Oswan, and Swan·emu. This project reimplements the core
+from primary-source hardware documentation (clean-room — no emulator code is
+copied) and fixes exactly those bugs, each with a regression test that pins the
+behaviour the others get wrong.
+
+- **The catalogue + per-bug status:** [`docs/COMMUNITY-BUGS.md`](docs/COMMUNITY-BUGS.md)
+- **A plain-language walkthrough** of what each bug looked like, how it was fixed,
+  and how it was proved: [`docs/COMMUNITY-BUG-FIXES.md`](docs/COMMUNITY-BUG-FIXES.md)
+
+## Community-bug scorecard
+
+**6 fixed · 3 partial · 0 pending** (of 9). *Partial* means the behaviour is done
+but a timing value or an open hardware question remains. Every fix was
+**adversarially audited against WSMan / WSdev / ares** (the audit corrected
+several — see the ledger's *Audit-corrected* notes).
 
 | # | Documented bug | Status |
-|---|----------------|--------|
-| 2 | Sprite DMA → **tearing** | ✅ **fixed** (`core-ws::ppu` — double-buffered; copy timing left open per WSMan) |
-| 4 | Noise LFSR frozen in wave mode → *Clock Tower* **hangs** | ✅ **fixed** (`core-ws::apu`) |
-| 5 | Monochrome palette pool indirection → **wrong shading** | ✅ **fixed** (`core-ws::palette`) |
-| 6 | Color-zero palette behaviour (by bit depth) | ✅ **fixed** (`core-ws::palette`) |
-| 8 | Internal EEPROM size → **WS/WSC mis-detection** | ✅ **fixed** (`core-ws::eeprom`, 1 Kbit / 16 Kbit) |
-| 1 | V30MZ interrupt handling (priority, edge/level, IVT vector) | 🔨 behaviour done + CPU V20-validated; cycle timing pending |
-| 3 | UART disable → startup **lockups** | 🔨 lockup addressed; latch-vs-level semantics + data path open |
-| 7 | I/O port access timing (`IN`/`OUT` ≈ 12 cycles) | 🔨 data validated; cycle cost pending |
-| 9 | 8-bit ROM bus width (Pocket Challenge V2, early carts) | ✅ **fixed** (`format-ws` footer decode → `WsCartridge::bus_width`; footer flags bit 2) |
-
-Per-bug detail and the proving tests are in
-[`docs/COMMUNITY-BUGS.md`](docs/COMMUNITY-BUGS.md); a plain-language walkthrough of
-what each bug looked like, how it was fixed, and how we proved it is in
-[`docs/COMMUNITY-BUG-FIXES.md`](docs/COMMUNITY-BUG-FIXES.md).
+|--:|----------------|--------|
+| 2 | Sprite DMA → **tearing** | ✅ fixed (`core-ws::ppu` — double-buffered) |
+| 4 | Noise LFSR frozen in wave mode → *Clock Tower* **hangs** | ✅ fixed (`core-ws::apu`) |
+| 5 | Monochrome palette pool indirection → **wrong shading** | ✅ fixed (`core-ws::palette`) |
+| 6 | Color-zero transparency (keyed on bit depth) | ✅ fixed (`core-ws::palette`) |
+| 8 | Internal EEPROM size → **WS/WSC mis-detection** | ✅ fixed (`core-ws::eeprom`) |
+| 9 | 8-bit ROM bus width (Pocket Challenge V2, early carts) | ✅ fixed (`format-ws` footer → `bus_width`) |
+| 1 | V30MZ interrupt handling (priority, edge/level, IVT) | 🔨 behaviour + CPU delivery done; timing pending |
+| 3 | UART disable → startup **lockups** | 🔨 lockup fixed; a latch question + data path open |
+| 7 | I/O port access timing (`IN`/`OUT` cost) | 🔨 data validated; cycle *value* pending |
 
 ## Status
 
-**Current focus:** the real WonderSwan memory map, which wires the fixed
-subsystems to their registers. The V30MZ CPU is complete and hardware-validated,
-the 8-bit ROM bus (#9) decodes from the cartridge footer, and the cycle-unit
-question that blocked all instruction timing is now **resolved** (measured
-timings are CPU cycles at 3.072 MHz — no hidden 4×). The two timing partials
-(#1, #7) are unblocked; what remains is implementing per-instruction costs and
-confirming the `IN`/`OUT` value on hardware.
+- **CPU** — the NEC V30MZ runs the full documented 8086/80186 instruction set and
+  is validated against the **V20 single-step hardware oracle** (612k runnable
+  cases, **zero defined-behaviour bugs**; [`docs/VALIDATION.md`](docs/VALIDATION.md)).
+- **Machine** — a real address-routing memory map (internal RAM per model,
+  `$C0`–`$C3` cartridge ROM/SRAM bank windows, the I/O three-way decode, `$A0`
+  system control) with hardware-IRQ delivery. It **boots from cartridge ROM via
+  the reset vector**.
+- **Timing** — the cycle-unit question that blocked all instruction timing is
+  **resolved**: measured timings are CPU cycles at 3.072 MHz (no hidden 4×; see
+  the [CPU-spec preamble](docs/hardware/01-cpu-v30mz.md)). Per-instruction timing
+  is not implemented yet.
+- **Not done** — the fixed subsystems aren't wired to the machine's I/O dispatch;
+  there is no PPU rendering, DMA, boot-ROM overlay, save/state, or frontend.
 
-Verified on Rust/Cargo 1.96.0 (Windows x86-64): `cargo fmt --check`,
-`cargo clippy --all-targets -- -D warnings`, and **153 tests** all pass in debug
-and release. No `unsafe`; warnings are errors. The same gate runs in
-[CI](https://github.com/PandaCatz/PandaDebugging/actions/workflows/ci.yml) on
-every push.
+Verified on Rust/Cargo 1.96.0: `cargo fmt --check`, `cargo clippy -- -D warnings`,
+and **153 tests** pass in debug and release (no `unsafe`; warnings are errors).
+The same gate runs in [CI](https://github.com/PandaCatz/PandaDebugging/actions/workflows/ci.yml)
+on every push. Milestones are tagged as
+[Releases](https://github.com/PandaCatz/PandaDebugging/releases) (latest: the real
+memory map — boots from cartridge ROM).
 
-**Milestones** are tagged and published as
-[Releases](https://github.com/PandaCatz/PandaDebugging/releases): `v0.1.0`
-headless skeleton → `v0.2.0` V30MZ instruction set → `v0.3.0` machine + IRQ
-delivery → `v0.4.0` V20 oracle validation → `v0.5.0` community-bug fixes.
-
-The CPU is additionally validated against the **V20 single-step hardware oracle**
-(620k cases): **zero defined-behaviour bugs** — every divergence is a V20-only
-instruction or an officially-undefined flag. See
-[`docs/VALIDATION.md`](docs/VALIDATION.md).
+### Build order (phases)
 
 | Phase | What | Status |
 |------:|------|--------|
-| 0 | Charter, toolchain, fixtures, provenance | 🔨 in progress (toolchain + provenance + verified ROM-header decode done; test-ROM acquisition pending) |
+| 0 | Charter, toolchain, fixtures, provenance | 🔨 toolchain + provenance + verified ROM-header decode done; test-ROM acquisition pending |
 | 1 | Headless skeleton (contracts, parser, testkit, CLI) | ✅ complete |
-| 2 | V30MZ CPU + interrupt/bus timing | 🔨 CPU runs the **full documented 8086/80186 set** and is **V20-validated** (zero defined-behaviour bugs); machine + hardware-IRQ delivery + the **real memory map** (boots from cartridge ROM) done; cycle-unit **resolved**. Remaining: per-instruction timing, WSCpuTest |
-| 3 | PPU / display (sprite DMA @142, palettes, color-zero) | 🔨 palettes (#5), color-zero (#6), and sprite-DMA-@142 latch/lock (#2) done; pixel rendering pending |
-| 4 | APU / sound (unsigned mixing, LFSR-in-wave-mode, sweep) | 🔨 noise LFSR in wave mode (#4) done; unsigned mixing, sweep, HyperVoice pending |
-| 5 | DMA / SDMA (`5 + 2n`, CPU halt, cart-SRAM source) | ⬜ planned |
-| 6 | Cartridge / EEPROM / RTC / serial / bus width / input | 🔨 internal EEPROM (#8), serial/UART (#3), and 8-bit bus width (#9) done; RTC and input pending |
+| 2 | V30MZ CPU + memory map + interrupt/bus timing | 🔨 full instruction set, V20-validated, real memory map (boots), cycle-unit resolved; per-instruction timing + WSCpuTest remain |
+| 3 | PPU / display (sprite DMA, palettes, color-zero) | 🔨 palettes (#5/#6) + sprite-DMA latch (#2) done; pixel rendering pending |
+| 4 | APU / sound (mixing, LFSR-in-wave, sweep) | 🔨 noise LFSR (#4) done; mixing, sweep, HyperVoice pending |
+| 5 | DMA / SDMA | ⬜ planned |
+| 6 | Cartridge / EEPROM / RTC / serial / bus width / input | 🔨 EEPROM (#8), serial (#3), 8-bit bus (#9) done; RTC + input pending |
 | 7 | BIOS boot path | ⬜ planned |
 
-Detailed exit gates are in [`ROADMAP.md`](ROADMAP.md); the running state and
-verified evidence are in [`CLAUDE.md`](CLAUDE.md).
+Detailed exit gates: [`ROADMAP.md`](ROADMAP.md). Running state + evidence:
+[`CLAUDE.md`](CLAUDE.md).
 
-> **Timing cycle-unit — resolved:** measured WonderSwan timings are in **CPU
-> cycles (3.072 MHz)**, not master clocks — there is no hidden 4× (settled via
-> primary sources + ares/Mednafen + an `XCHG` datasheet ratio; details in the
-> [`01-cpu-v30mz.md`](docs/hardware/01-cpu-v30mz.md) preamble). Per-instruction
-> timing itself is still unimplemented (a scheduler task), and the `IN`/`OUT`
-> value still needs a hardware measurement.
-
-## Layout
+## Architecture
 
 | Crate | Role | State |
 |-------|------|-------|
 | `ws-contracts` | Deterministic API: integer emulated time, typed video/audio/input packets, the `Core`/`OutputSink` traits, non-panicking errors. | ✅ |
-| `format-ws` | Defensive, borrowed parser for `.ws` / `.wsc` cartridge images. Bytes in, validated view out; typed footer decode (`CartHeader`). | ✅ structural + verified footer |
-| `cpu-v30mz` | NEC V30MZ core. Registers, flags, addressing, reset, `CpuBus`, ModR/M decode, ALU, and a `step()` executor running the documented instruction set. | 🔨 instruction set complete; hardware-IRQ wiring and cycle timing pending |
-| `core-ws` | The WonderSwan machine core. Cartridge boundary, the real address-routing memory map (RAM per model, `$C0`–`$C3` ROM/SRAM banks, I/O decode, `$A0`), interrupt controller, machine + IRQ delivery (boots from cartridge ROM), and the fixed subsystems: `apu` (#4), `serial` (#3), `palette` (#5), `eeprom` (#8). | 🔨 memory map + boot done; subsystems not yet wired to I/O dispatch; PPU / DMA pending |
-| `ws-testkit` | Deterministic synthetic core + capture sink + stable hashing. Home of the hardware-test-ROM runner (arrives with the CPU). | ✅ synthetic path |
-| `ws-cli` | Headless runner and ROM inspector. | ✅ |
-
-## Where to start
-
-Read [`CLAUDE.md`](CLAUDE.md), then [`ROADMAP.md`](ROADMAP.md) and
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Hardware specs live in
-[`docs/hardware/`](docs/hardware/) — start with
-[`00-overview.md`](docs/hardware/00-overview.md), then the CPU
-([`01-cpu-v30mz.md`](docs/hardware/01-cpu-v30mz.md)) and interrupt
-([`02-interrupts.md`](docs/hardware/02-interrupts.md)) specs. Test-ROM and BIOS
-provenance is in [`docs/LEGAL_PROVENANCE.md`](docs/LEGAL_PROVENANCE.md); nothing
-copyrighted is committed.
+| `format-ws` | Defensive, borrowed `.ws` / `.wsc` parser. Bytes in, validated view out; typed cartridge-footer decode (`CartHeader`). | ✅ |
+| `cpu-v30mz` | NEC V30MZ core: registers, flags, addressing, reset, `CpuBus`, ModR/M decode, ALU, and a `step()` executor. | 🔨 instruction set complete; timing pending |
+| `core-ws` | Machine core: cartridge boundary, the real memory map, interrupt controller, machine + IRQ delivery (boots from ROM), and the fixed bug subsystems (`apu`, `serial`, `palette`, `eeprom`, `ppu`). | 🔨 map + boot done; subsystems not yet wired |
+| `ws-testkit` | Deterministic synthetic core + capture sink + stable hashing. | ✅ |
+| `ws-cli` | Headless runner and `--rom` inspector (no ROM bytes logged). | ✅ |
+| `v20-harness` | Runs the V20 single-step oracle against `cpu-v30mz`. | ✅ |
 
 ## Build & verify
 
@@ -119,13 +105,36 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-targets --all-features
 cargo test --release --workspace
-cargo run --release -p ws-cli
+cargo run --release -p ws-cli          # deterministic synthetic run
+cargo run --release -p ws-cli -- --rom <your-dump.ws>   # inspect a cartridge header
 ```
 
-Rust 1.96.0 is pinned via `rust-toolchain.toml`. No `unsafe`, warnings are errors.
+Rust 1.96.0 is pinned via `rust-toolchain.toml`. No `unsafe`; warnings are errors.
+
+## Documentation
+
+- **Start here:** [`docs/hardware/00-overview.md`](docs/hardware/00-overview.md) —
+  SoC family, the bug map, and the priority fix order.
+- **Hardware specs:** CPU [`01-cpu-v30mz.md`](docs/hardware/01-cpu-v30mz.md),
+  interrupts [`02-interrupts.md`](docs/hardware/02-interrupts.md), cartridge
+  footer [`06-cartridge.md`](docs/hardware/06-cartridge.md).
+- **Validation:** [`docs/VALIDATION.md`](docs/VALIDATION.md) (the V20 oracle).
+- **Roadmap & architecture:** [`ROADMAP.md`](ROADMAP.md),
+  [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+- **Contributors:** [`CLAUDE.md`](CLAUDE.md) — working rules and cross-session state.
 
 ## License
 
-PolyForm Noncommercial 1.0.0 (see `Cargo.toml`). The WonderSwan name, BIOS, and
-all game software are the property of their respective owners and are not
-included in this repository.
+Licensed under the **GNU General Public License v3.0 or later** — see
+[`LICENSE`](LICENSE). You may use, study, modify, and redistribute this code;
+any distributed derivative must remain under the GPL and make its source
+available.
+
+## Legal
+
+This is a **clean-room reimplementation** from public documentation. The
+WonderSwan name, the console BIOS, and all game software are the property of
+their respective owners and are **not** included in this repository — no ROMs,
+BIOS dumps, or copyrighted test binaries are committed (see
+[`docs/LEGAL_PROVENANCE.md`](docs/LEGAL_PROVENANCE.md)). Use the emulator only
+with dumps you are legally entitled to use.

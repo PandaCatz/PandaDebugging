@@ -40,5 +40,7 @@ contribution and AI-authorship policy first.
 
 ## Project license
 
-The source is PolyForm Noncommercial 1.0.0 (declared in the workspace
-`Cargo.toml`). The WonderSwan name and world are the property of their owners.
+The source is licensed **GPL-3.0-or-later** (declared in the workspace
+`Cargo.toml` and in `../LICENSE`). Distributed derivatives must remain under the
+GPL and provide source. The WonderSwan name, BIOS, and game software are the
+property of their owners and are not included here.
