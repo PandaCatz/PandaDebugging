@@ -189,8 +189,9 @@ is done but a timing number or a still-open hardware question remains.
   core. Tests include `highest_bit_wins_priority`,
   `ack_clears_edge_lines_but_not_level_lines`, and
   `vector_masks_base_low_three_bits`.
-- **Why it's only partial:** cycle-accurate interrupt *timing* is still pending —
-  it depends on the open cycle-unit question below.
+- **Why it's only partial:** cycle-accurate interrupt *timing* is still pending.
+  The cycle-unit question it depended on is now **resolved** (see below), so this
+  is a matter of implementing the timing, not an open unknown.
 
 ### 🔨 #3 — Serial port interrupts on disable (lockup fixed; a question open)
 
@@ -211,8 +212,10 @@ is done but a timing number or a still-open hardware question remains.
   cycles.
 - **What we did:** the data behaviour of `IN`/`OUT` is implemented and
   V20-validated.
-- **Why it's only partial:** the exact cycle *cost* (reported as 12 vs 6 by
-  different sources) is blocked on the same cycle-unit question as #1.
+- **Why it's only partial:** the exact cycle *cost* is still open — but only its
+  *value* (reported as 12 vs 6 by different sources). The *unit* is now settled
+  (CPU cycles — see below); confirming which value is right needs a hardware
+  measurement.
 
 ---
 
@@ -277,7 +280,9 @@ costs on the scheduler, plus a hardware measurement of the exact `IN`/`OUT` valu
 - This is **not a playable emulator**. The fixed subsystems are correct and
   tested in isolation; wiring them into a full running machine (the real memory
   map, PPU rendering, DMA, timing) is still ahead.
-- The two partial fixes (#1, #7) are blocked on the cycle-unit question above.
+- The two timing partials (#1, #7) are unblocked now that the cycle-unit question
+  is resolved; what remains is implementing per-instruction timing (and measuring
+  the exact `IN`/`OUT` value).
 - A few resolved facts (e.g. the cartridge bus-width bit) rest on strong
   documentary convergence rather than a physical hardware dump; those are flagged
   as such in the hardware specs, not hidden.
