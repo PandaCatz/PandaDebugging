@@ -49,6 +49,22 @@ impl MonoPalettes {
         self.palettes[palette][base + 1] = (value >> 4) & 0x07;
     }
 
+    /// Read back one of the four `REG_PALMONO_POOL` bytes (`reg` = 0..=3), the
+    /// two packed 4-bit pool entries.
+    #[must_use]
+    pub const fn read_pool(&self, reg: usize) -> u8 {
+        self.pool[reg * 2] | (self.pool[reg * 2 + 1] << 4)
+    }
+
+    /// Read back one of the 32 `REG_PALMONO` bytes (`reg` = 0..=31). Colour 0 of
+    /// the transparent palettes (4–7, 12–15) reads 0, since the write dropped it.
+    #[must_use]
+    pub const fn read_palette(&self, reg: usize) -> u8 {
+        let palette = reg / 2;
+        let base = (reg % 2) * 2;
+        self.palettes[palette][base] | (self.palettes[palette][base + 1] << 4)
+    }
+
     /// Resolve the final 4-bit shade for `palette` (0..=15), `colour` (0..=3)
     /// through the pool indirection.
     #[must_use]

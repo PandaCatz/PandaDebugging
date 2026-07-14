@@ -24,6 +24,7 @@
 
 use crate::cartridge::WsCartridge;
 use crate::io;
+use crate::palette::MonoPalettes;
 use format_ws::{BusWidth, MapperKind, SaveKind};
 use ws_contracts::Model;
 
@@ -85,6 +86,9 @@ pub struct MemoryMap {
     /// `$A0` writable bits only (0 = lockout latch, 2 = bus width, 3 = speed).
     /// Status bits (1 = colour, 7 = self-test) are merged in on read.
     system_ctrl: u8,
+    /// Monochrome two-stage palette (`$1C`–`$3F`), the home of community bug
+    /// fixes #5/#6.
+    palette: MonoPalettes,
 }
 
 impl MemoryMap {
@@ -117,7 +121,14 @@ impl MemoryMap {
             cart,
             banks: Banks::power_up(is_2003),
             system_ctrl,
+            palette: MonoPalettes::new(),
         }
+    }
+
+    /// The monochrome palette state (for the PPU and tests).
+    #[must_use]
+    pub const fn palette(&self) -> &MonoPalettes {
+        &self.palette
     }
 
     /// The model's open-bus byte for unmapped reads (`$90` mono / `$00` colour,
@@ -226,32 +237,68 @@ impl MemoryMap {
     #[must_use]
     pub fn io_read(&self, port: u16) -> u8 {
         match Self::route(port) {
-            IoBlock::Cartridge => match port {
-                io::REG_BANK_LINEAR => self.banks.linear & self.banks.linear_mask(),
-                io::REG_BANK_SRAM => self.banks.sram,
-                io::REG_BANK_ROM0 => self.banks.rom0,
-                io::REG_BANK_ROM1 => self.banks.rom1,
-                // Other cartridge ports (RTC, external EEPROM, $CE) not modelled.
-                _ => self.open_bus(),
-            },
-            IoBlock::Soc if port & 0x00FF == io::REG_SYSTEM_CTRL => self.read_system_ctrl(),
-            // SoC register not modelled yet, internal EEPROM not wired — explicit
-            // gaps, returned as open bus rather than a guessed value.
-            IoBlock::Soc | IoBlock::Eeprom | IoBlock::OpenBus => self.open_bus(),
+            IoBlock::Cartridge => self.cart_io_read(port),
+            IoBlock::Soc => self.soc_io_read(port),
+            // Internal EEPROM protocol not wired yet.
+            IoBlock::Eeprom | IoBlock::OpenBus => self.open_bus(),
         }
     }
 
     pub fn io_write(&mut self, port: u16, value: u8) {
         match Self::route(port) {
-            IoBlock::Cartridge => match port {
-                io::REG_BANK_LINEAR => self.banks.linear = value,
-                io::REG_BANK_SRAM => self.banks.sram = value,
-                io::REG_BANK_ROM0 => self.banks.rom0 = value,
-                io::REG_BANK_ROM1 => self.banks.rom1 = value,
-                _ => {}
-            },
-            IoBlock::Soc if port & 0x00FF == io::REG_SYSTEM_CTRL => self.write_system_ctrl(value),
-            IoBlock::Soc | IoBlock::Eeprom | IoBlock::OpenBus => {}
+            IoBlock::Cartridge => self.cart_io_write(port, value),
+            IoBlock::Soc => self.soc_io_write(port, value),
+            IoBlock::Eeprom | IoBlock::OpenBus => {}
+        }
+    }
+
+    fn cart_io_read(&self, port: u16) -> u8 {
+        match port {
+            io::REG_BANK_LINEAR => self.banks.linear & self.banks.linear_mask(),
+            io::REG_BANK_SRAM => self.banks.sram,
+            io::REG_BANK_ROM0 => self.banks.rom0,
+            io::REG_BANK_ROM1 => self.banks.rom1,
+            // Other cartridge ports (RTC, external EEPROM, $CE) not modelled.
+            _ => self.open_bus(),
+        }
+    }
+
+    fn cart_io_write(&mut self, port: u16, value: u8) {
+        match port {
+            io::REG_BANK_LINEAR => self.banks.linear = value,
+            io::REG_BANK_SRAM => self.banks.sram = value,
+            io::REG_BANK_ROM0 => self.banks.rom0 = value,
+            io::REG_BANK_ROM1 => self.banks.rom1 = value,
+            _ => {}
+        }
+    }
+
+    fn soc_io_read(&self, port: u16) -> u8 {
+        match port & 0x00FF {
+            io::REG_SYSTEM_CTRL => self.read_system_ctrl(),
+            p @ io::REG_PALMONO_POOL_START..=io::REG_PALMONO_POOL_END => self
+                .palette
+                .read_pool((p - io::REG_PALMONO_POOL_START) as usize),
+            p @ io::REG_PALMONO_START..=io::REG_PALMONO_END => self
+                .palette
+                .read_palette((p - io::REG_PALMONO_START) as usize),
+            // SoC register not modelled yet — explicit gap, not a guessed value.
+            _ => self.open_bus(),
+        }
+    }
+
+    fn soc_io_write(&mut self, port: u16, value: u8) {
+        match port & 0x00FF {
+            io::REG_SYSTEM_CTRL => self.write_system_ctrl(value),
+            p @ io::REG_PALMONO_POOL_START..=io::REG_PALMONO_POOL_END => {
+                self.palette
+                    .write_pool((p - io::REG_PALMONO_POOL_START) as usize, value);
+            }
+            p @ io::REG_PALMONO_START..=io::REG_PALMONO_END => {
+                self.palette
+                    .write_palette((p - io::REG_PALMONO_START) as usize, value);
+            }
+            _ => {}
         }
     }
 
@@ -410,5 +457,37 @@ mod tests {
         assert_eq!(map.read_system_ctrl() & 0x01, 0x01);
         map.io_write(io::REG_SYSTEM_CTRL, 0x00);
         assert_eq!(map.read_system_ctrl() & 0x01, 0x01, "lockout is one-way");
+    }
+
+    #[test]
+    fn palette_registers_wire_through_io_dispatch() {
+        // Community bug #5 now runs inside the machine: pool + palette writes via
+        // the I/O bus land in the two-stage palette, and shade resolves through
+        // the pool indirection.
+        let mut map = MemoryMap::new(Model::Color, None);
+        map.io_write(io::REG_PALMONO_POOL_START, 0x30); // pool[0]=0, pool[1]=3
+        map.io_write(io::REG_PALMONO_START, 0x01); // palette 0 colour 0 -> pool idx 1
+        assert_eq!(
+            map.palette().shade(0, 0),
+            3,
+            "pool[palette[0][0]] = pool[1]"
+        );
+        // The registers read back the written bytes.
+        assert_eq!(map.io_read(io::REG_PALMONO_POOL_START), 0x30);
+        assert_eq!(map.io_read(io::REG_PALMONO_START), 0x01);
+    }
+
+    #[test]
+    fn palette_color_zero_write_protect_holds_through_io() {
+        // Bug #5b: colour 0 of palettes 4-7/12-15 stays 0 even written via I/O.
+        let mut map = MemoryMap::new(Model::Color, None);
+        // Palette 5 low byte is register 10 → port $20 + 10.
+        map.io_write(io::REG_PALMONO_START + 10, 0x35);
+        assert_eq!(
+            map.palette().pool_index(5, 0),
+            0,
+            "colour 0 write-protected"
+        );
+        assert_eq!(map.palette().pool_index(5, 1), 3, "colour 1 still writes");
     }
 }
