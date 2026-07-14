@@ -134,9 +134,11 @@ Verified on Windows x86-64 with Rust/Cargo 1.96.0 on 2026-07-14:
 
 - `cargo fmt --all -- --check` — pass.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings` — pass.
-- `cargo test --workspace --all-targets --all-features` — 153 passed, 0 failed
-  (cpu-v30mz 85, core-ws 46, format-ws 14, ws-testkit 5, ws-contracts 3, ws-cli 0).
-- `cargo test --release --workspace` — 153 passed, 0 failed.
+- `cargo test --workspace --all-targets --all-features` — 155 passed, 0 failed
+  (cpu-v30mz 85, core-ws 48, format-ws 14, ws-testkit 5, ws-contracts 3, ws-cli 0).
+- `cargo test --release --workspace` — 155 passed, 0 failed.
+- Mono palette (#5/#6) wired into the memory-map I/O dispatch (`$1C`–`$3F`);
+  proven end-to-end (`palette_registers_wire_through_io_dispatch`).
 - Real memory map (`core-ws::memory`): internal RAM per model, cartridge ROM/SRAM
   bank windows, I/O three-way decode, `$A0`, open-bus. `Machine::with_cartridge`
   boots from ROM via the reset vector (test `boots_from_cartridge_rom_via_the_reset_vector`).
@@ -172,16 +174,21 @@ bugs — `docs/VALIDATION.md`); `core-ws::Machine` with hardware-IRQ delivery ov
 the **real address-routing memory map** (`memory::MemoryMap`) that boots from
 cartridge ROM via the reset vector; the verified cartridge footer decode (bug #9)
 in `format-ws`; and the cycle-unit ambiguity **resolved** (CPU cycles, no ×4).
-The six community-bug subsystems (`apu`, `serial`, `palette`, `eeprom`, `ppu`)
-are still **isolated modules, not yet wired to the map's I/O dispatch**.
+The mono **palette (#5/#6) is wired** into the map's I/O dispatch (`$1C`–`$3F`);
+the remaining subsystems (`apu` #4, `serial` #3, `eeprom` #8, `ppu` #2) are still
+isolated modules pending their register-map transcription + wiring.
 
 Next pieces, in order:
 
-1. **Wire the fixed subsystems to the memory map's I/O dispatch** so the
-   community-bug fixes run inside the real machine (APU ports, palette/PPU regs,
-   serial `$B0`-area regs, internal-EEPROM `$B8`–`$BF` protocol). The map's
-   `io_read`/`io_write` currently model `$A0` + the `$C0`–`$C3` banks and leave
-   the rest as explicit open-bus gaps.
+1. **Wire the remaining fixed subsystems to the memory map's I/O dispatch.** The
+   mono **palette (#5/#6) is now wired** (`MemoryMap` owns `MonoPalettes`; `$1C`–
+   `$3F` route through `soc_io_read`/`soc_io_write`). Still to wire: `apu` (#4),
+   `serial` (#3, couples to the interrupt controller — disabling the port must
+   lower its IRQ lines), and `eeprom` (#8, the `$B8`–`$BF` block with its serial
+   command protocol). **Prerequisite:** transcribe each subsystem's exact
+   register addresses from WSMan/WSdev into `io.rs` first — do **not** guess
+   addresses. `io_read`/`io_write` model `$A0` + `$C0`–`$C3` banks + palette; the
+   rest are explicit open-bus gaps.
 2. **Per-instruction timing** — now unblocked (unit resolved to CPU cycles).
    Build the master-clock scheduler (CPU cost ×4), closing bugs #1 and #7 once
    the `IN`/`OUT` value is measured.
