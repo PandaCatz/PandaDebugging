@@ -21,7 +21,10 @@ jobs:
     name: fmt · clippy · test (Rust 1.96.0)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # Pinned to an immutable commit SHA (supply-chain hardening); the comment
+      # tracks the human-readable version. v7 runs on Node 24, clearing the
+      # Node 20 deprecation warning that v4 emitted.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       # rust-toolchain.toml pins channel 1.96.0 with clippy + rustfmt (profile
       # minimal); `rustup show` installs exactly that. The redundant component
