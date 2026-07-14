@@ -39,7 +39,9 @@ audit corrected several (see the ledger's *Audit-corrected* notes).
 | 9 | 8-bit ROM bus width (Pocket Challenge V2, early carts) | ✅ **fixed** (`format-ws` footer decode → `WsCartridge::bus_width`; footer flags bit 2) |
 
 Per-bug detail and the proving tests are in
-[`docs/COMMUNITY-BUGS.md`](docs/COMMUNITY-BUGS.md).
+[`docs/COMMUNITY-BUGS.md`](docs/COMMUNITY-BUGS.md); a plain-language walkthrough of
+what each bug looked like, how it was fixed, and how we proved it is in
+[`docs/COMMUNITY-BUG-FIXES.md`](docs/COMMUNITY-BUG-FIXES.md).
 
 ## Status
 

@@ -10,6 +10,10 @@ A fix only counts when it is implemented **and** covered by a test (or, for
 timing/undefined behaviour, validated against a hardware oracle). "Looks right"
 is not a fix.
 
+> For a plain-language walkthrough of each bug — what it looked like in games,
+> how it was fixed, and how we proved it — see
+> [COMMUNITY-BUG-FIXES.md](COMMUNITY-BUG-FIXES.md).
+
 Status: ✅ implemented + tested · 🔨 partial · ⬜ pending
 
 | # | Documented community bug | What emulators get wrong | Our status |
