@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="How Steam pays one partner account, which legal structure fits a small game team, and the agreement/vesting/transparency setup that keeps profit splits honest.">
+<meta name="description" content="How Steam pays one partner account, which legal structure fits a small game team, and the agreement/vesting/transparency setup that keeps profit splits honest — in plain English.">
 <title>Shipping on Steam as a Team — Money &amp; Structure</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%AE%3C/text%3E%3C/svg%3E">
 <style>
@@ -82,7 +82,8 @@
     padding: 1rem 1.25rem;
     margin: 0 0 1rem;
   }
-  .keyfact p { margin: 0; }
+  .keyfact p { margin: 0 0 0.6rem; }
+  .keyfact p:last-child { margin: 0; }
   .keyfact .src { display: block; margin-top: 0.5rem; font-size: 0.85rem; color: var(--muted); }
 
   .flow {
@@ -136,7 +137,8 @@
     margin: 0 0 0.9rem;
   }
   .option h3 { margin: 0 0 0.35rem; font-size: 1.05rem; }
-  .option p { margin: 0; font-size: 0.98rem; }
+  .option p { margin: 0 0 0.6rem; font-size: 0.98rem; }
+  .option p:last-child { margin: 0; }
   .option .tag {
     font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
     font-size: 0.7rem;
@@ -178,6 +180,17 @@
     font-size: 0.9rem;
   }
 
+  dl.glossary { margin: 0 0 1rem; }
+  dl.glossary dt {
+    font-weight: 700;
+    margin-top: 0.75rem;
+  }
+  dl.glossary dd {
+    margin: 0.1rem 0 0 0;
+    color: var(--muted);
+    font-size: 0.95rem;
+  }
+
   .caveat { color: var(--warn); font-weight: 700; }
   footer {
     margin-top: 3rem;
@@ -191,79 +204,137 @@
 </head>
 <body>
 <main>
-  <p class="eyebrow">Team brief · Steam release · rev 2</p>
+  <p class="eyebrow">Team brief · Steam release · rev 3</p>
   <h1>Splitting the money without losing friends</h1>
-  <p class="dateline">How Steam actually pays, what structure the team needs, and what keeps everyone honest. Researched against Valve's docs and game-law sources, 12 August 2026.</p>
+  <p class="dateline">How Steam actually pays, what structure the team needs, and what keeps everyone honest. Same verified facts as rev 2, now in plain English. 12 August 2026.</p>
 
   <div class="keyfact">
-    <p><strong>The fact that shapes everything:</strong> Valve pays each game's revenue to exactly <strong>one</strong> partner account, into a bank account whose holder name <strong>matches the partner's legal identification</strong>. From Valve's docs: payments are "associated one to one with partner and account. Any splits or further payments that need to be made are your responsibility."</p>
+    <p><strong>The fact that shapes everything:</strong> Steam will only ever pay <strong>one</strong> bank account per game, and the name on that bank account has to match the legal ID of whoever signed up with Valve. Valve's own docs: payments are "associated one to one with partner and account. Any splits or further payments that need to be made are your responsibility."</p>
     <span class="src">Sources: <a href="https://partner.steamgames.com/doc/finance/payments_salesreporting/faq">Steamworks Reporting &amp; Payments FAQ</a> · <a href="https://partner.steamgames.com/steamdirect">Steam Direct</a></span>
   </div>
-  <p>So there is no "Steam splits it for us" option. Whoever signs with Steam receives 100% of the money, and everything after that is contracts between us. That's why the structure question matters.</p>
+  <p>Translation: there is no "Steam splits it four ways for us" button. Whoever signs with Steam gets 100% of the money, and getting your cut from them is a private arrangement between you. Everything below exists to make that arrangement fair, automatic, and impossible to argue about later.</p>
 
   <h2>Follow the dollar</h2>
   <ul class="flow">
-    <li><span class="step mono">01</span><span class="what">Sale on Steam</span><span class="note">Customer pays list price; VAT/sales tax and refunds come out of gross.</span></li>
-    <li><span class="step mono">02</span><span class="what">Valve keeps 30%</span><span class="note">25% on revenue past $10M, 20% past $50M.</span></li>
-    <li><span class="step mono">03</span><span class="what">Monthly payout</span><span class="note">~30 days after month end, once ≥ $100 has accrued.</span></li>
-    <li><span class="step mono">04</span><span class="what">One bank account</span><span class="note">The partner of record — ideally our LLC, not one person.</span></li>
-    <li><span class="step mono">05</span><span class="what">Expenses + reserve</span><span class="note">Marketing, tools, tax holdback, DLC war chest — agreed % first.</span></li>
-    <li><span class="step mono">06</span><span class="what">Distributions</span><span class="note">Paid to members per the operating agreement, on a schedule.</span></li>
+    <li><span class="step mono">01</span><span class="what">Sale on Steam</span><span class="note">A player pays the sticker price. Refunds and sales tax (VAT in most countries) come off the top first.</span></li>
+    <li><span class="step mono">02</span><span class="what">Valve keeps 30%</span><span class="note">Of what's left. Drops to 25% after the game earns $10M, 20% after $50M. (Not our problem yet.)</span></li>
+    <li><span class="step mono">03</span><span class="what">Monthly payout</span><span class="note">Valve pays about 30 days after each month ends, once at least $100 has built up.</span></li>
+    <li><span class="step mono">04</span><span class="what">One bank account</span><span class="note">Everything lands here — ideally the company's account, not one person's.</span></li>
+    <li><span class="step mono">05</span><span class="what">Expenses + holdback</span><span class="note">Marketing, tools, a tax stash, a DLC fund — an agreed % stays in the account.</span></li>
+    <li><span class="step mono">06</span><span class="what">Everyone gets paid</span><span class="note">What's left goes out to members by the percentages you all signed.</span></li>
   </ul>
-  <p>Getting on Steam at all: any adult can publish — company <em>or</em> individual. Onboarding is identity verification (a few business days), a tax questionnaire (W-9 for US, W-8BEN for non-US), and banking details. The <a href="https://partner.steamgames.com/steamdirect">Steam Direct fee</a> is $100 per game — non-refundable, recouped once the game passes $1,000 adjusted gross. <strong>Two timing gates people miss:</strong> a mandatory <strong>30-day wait</strong> between paying the fee and your first release, and a "coming soon" store page that must be publicly visible at least <strong>2 weeks</strong> before launch (realistically months, for wishlists).</p>
+
+  <div class="keyfact">
+    <p><strong>Made-up but realistic numbers.</strong> Say the game sells 5,000 copies at $15 — that's $75,000 in sticker-price sales. After refunds and foreign sales taxes, call it $68,000 (Steam calls this "adjusted gross"). Valve keeps 30%, so about <strong>$47,600</strong> reaches the company account over the year. The team agreed to hold back 35% for taxes, marketing, and post-launch content (~$16,700), leaving about $30,900 to split. Four people at 25% each: roughly <strong>$7,700 apiece</strong> — and each person still owes their own income tax on that (see the tax bullet below).</p>
+  </div>
+
+  <p><strong>Getting on Steam at all:</strong> you don't need a company — any adult can sign up, as a person or as a business. Onboarding means proving your identity (takes a few business days), filling in a short tax form (W-9 if you're in the US; W-8BEN if not — it just tells the IRS who you are and which country gets to tax you), and giving bank details. The <a href="https://partner.steamgames.com/steamdirect">Steam Direct fee</a> is $100 per game. It's not refundable, but Valve gives it back out of your first earnings once the game has made $1,000. <strong>Two timing rules people miss:</strong> you can't release until <strong>30 days after paying the fee</strong>, and your store page has to sit publicly visible in "coming soon" mode for at least <strong>2 weeks</strong> before launch — realistically you want it up for months, because wishlists drive the launch.</p>
 
   <h2>Three ways to structure it</h2>
   <div class="option trap">
     <span class="tag">The default trap</span>
     <h3>Do nothing</h3>
-    <p>A group making profit together with no entity and no paperwork is a <strong>general partnership</strong> by default — no filing needed, a handshake creates it. Every member is personally liable for what any member does, and courts fill the missing terms with statutory defaults: <strong>equal profit shares and equal management authority regardless of who actually did the work</strong>. This is the structure we have today.</p>
+    <p>Here's the part nobody tells you: if a group just… makes money together, the law already assigns you a structure. It's called a <strong>general partnership</strong>, it forms automatically — no paperwork, a handshake is enough — and its default rules are terrible for us:</p>
+    <p><strong>Everyone is personally on the hook for everything.</strong> If the game ships with music someone didn't have rights to and there's a lawsuit, the lawyers can come after <em>each member's own</em> savings and stuff — not just the game's money, and not just the person who added the track.</p>
+    <p><strong>And the default split is equal.</strong> Courts don't care who did 80% of the work; with nothing in writing, the law assumes equal shares and equal say. Doing nothing isn't avoiding a decision — it <em>is</em> a decision, just the worst one.</p>
   </div>
   <div class="option">
     <span class="tag">Option A · cheapest</span>
-    <h3>One person publishes as an individual</h3>
-    <p>One of us signs with Steam personally; everyone else signs a revenue-share contract with them. Fine for a free or jam game. Downsides: all revenue is that person's taxable income (they then issue 1099s), the Steam account and the game live or die with one human, and every payout is a trust exercise.</p>
+    <h3>One person signs up as an individual</h3>
+    <p>One of us registers with Steam personally and everyone else signs a revenue-share contract with that person (a short agreement: "you get X% of what the game earns"). Fine for a free game or a jam entry.</p>
+    <p>The catches: every dollar the game earns counts as that one person's income at tax time — they then have to send tax paperwork (1099 forms) to everyone they pay out, and sort the deductions so they're not taxed on money they passed along. The Steam account, the game, and the bank account all live and die with one human. And every single payout is a trust exercise.</p>
   </div>
   <div class="option recommended">
     <span class="tag">Option B · recommended</span>
-    <h3>Multi-member LLC</h3>
-    <p>The LLC signs Steamworks, owns the game, and receives the money. The <strong>operating agreement</strong> is the honesty mechanism: ownership %, vesting, decision rules, exits. Taxes pass through — each member gets a K-1 and pays tax on their share. Cost: roughly $50–$500 state filing plus small annual fees; file in the state where the managing member lives (Delaware buys nothing at our scale). Then an EIN (free, IRS website) and a business bank account.</p>
+    <h3>Form an LLC together</h3>
+    <p>An <strong>LLC (Limited Liability Company)</strong> is a cheap legal container you create by filing a short form with your state — usually $50–$500 once, plus a small yearly fee (a few states are pricier; California charges $800/year minimum). The company — not any person — signs with Steam, owns the game, and receives the money. "Limited liability" means if the company gets sued, members' personal savings are generally off the table.</p>
+    <p>The rulebook everyone signs is called the <strong>operating agreement</strong>: who owns what percent, how decisions get made, what happens when someone leaves. That document, not vibes, is what keeps everyone honest — the whole next section is about what to put in it.</p>
+    <p>Taxes are simpler than they sound: the LLC itself pays no income tax. Once a year it hands each member a <strong>K-1</strong> — a one-page slip saying "your share of the profit was $X" — and you copy that number onto your personal tax return. Setup after filing: get an <strong>EIN</strong> (a free tax ID for the company, like an SSN for the business — 10 minutes on irs.gov), open a business bank account, and <strong>never mix company money with personal money</strong> — pay your rent from the company account and a court can decide the company wasn't real and take the liability shield away. Bonus: the LLC's name (or a registered "doing business as" name) is what appears as developer on the store page — run your state's business-name search and a quick trademark search before you fall in love with one.</p>
   </div>
   <div class="option">
     <span class="tag">Option C · skip</span>
     <h3>Corporation</h3>
-    <p>Only worth the overhead if we're raising investment. We're not. Skip.</p>
+    <p>The heavyweight structure — shares, a board, corporate taxes, annual formalities. It exists for companies raising money from investors. We're not, so skip it.</p>
   </div>
 
   <h2>Fixed split or earned split?</h2>
-  <p>Two workable models — pick one deliberately:</p>
-  <p><strong>Fixed percentages with vesting.</strong> Agree the splits now, but each share is <em>earned</em> monthly or per milestone across the remaining dev period (startups use 4-year/1-year-cliff; game teams usually vest to ship date). Simple to run; renegotiate only if roles change.</p>
-  <p><strong>Dynamic split ("Slicing Pie").</strong> Nobody guesses percentages up front — a ledger tracks contributions (hours × an agreed rate × a risk multiplier; cash counts extra) and the split at any moment is your slice of the ledger, frozen at launch. Fairest when nobody knows who'll end up doing the work; costs real bookkeeping discipline every week.</p>
+  <p>Two workable ways to decide the percentages — pick one on purpose:</p>
+  <p><strong>Fixed percentages that vest.</strong> "Vesting" means you don't own your whole share on day one — you earn it over time, so quitting early doesn't keep a full cut. Example: Alex is promised 30%, vesting monthly over the 10 months left before launch. Alex leaves after 4 months → Alex keeps 12% (4/10 of 30%), and the unearned 18% flows back to the people who finish the game. Simple to run; revisit only if someone's role really changes.</p>
+    <p><strong>Earned split ("Slicing Pie").</strong> Nobody guesses percentages up front. Instead you keep a shared ledger: every hour worked goes in at an agreed hourly value (weighted up because nobody's being paid yet — that's the risk), and cash anyone puts in counts extra. Your split at any moment is your slice of the whole ledger, and you freeze it at launch. If the ledger totals 10,000 points and yours are 4,000, you're on 40% today. Fairest option when nobody knows who'll end up carrying the project — but it only works if the ledger actually gets updated every week.</p>
 
   <h2>What actually keeps everyone honest</h2>
-  <p>Not the entity itself — the paperwork plus visibility:</p>
+  <p>Not the company itself — the paperwork plus the fact that everyone can see the money:</p>
   <ul class="honest">
-    <li><strong>A signed agreement now, before more work goes in.</strong> Even one page: splits, decision rules (pricing, discounts, DLC), what happens when someone leaves, dies, or ghosts, and how a departing share gets bought out.</li>
-    <li><strong>Define "revenue" precisely.</strong> Gross? After Valve's cut? After expenses? Game lawyers call this the one definition that shapes every payment that follows — pin it, and ban vague terms like "fair share."</li>
-    <li><strong>IP assignment, signed before work continues.</strong> IP does not transfer automatically — each contributor owns their own code, art, and music until they assign it to the entity in writing. Without it, any one person can block the release or walk off with assets in the shipped game.</li>
-    <li><strong>Vesting</strong> (or the dynamic ledger above). Someone who bails three months in doesn't keep a full share of a game the rest finished.</li>
-    <li><strong>Everyone reads the numbers at the source.</strong> Steamworks supports multiple user logins with per-permission access — give every member <em>View Financials</em> (partner level) or <em>View Financial Info</em> (per app: sales and download data). Data comes from Valve, not from a screenshot. Same visibility on the business bank account.</li>
-    <li><strong>Name who holds "Actual Authority."</strong> Valve assigns one Steamworks role that alone can touch bank details, tax info, and legal agreements — and admins can only grant permissions they hold themselves. Write into the agreement who holds it and what they may do unilaterally (nothing involving money is a good default).</li>
-    <li><strong>Distributions on a schedule, expenses first.</strong> Quarterly: revenue − expenses − an agreed holdback (taxes, refunds, marketing, post-launch content) → distribute per the agreement. Writing the holdback % down now kills most future arguments.</li>
-    <li><strong>Splits with the reasoning recorded.</strong> Equal is fine if everyone agrees — but write down <em>why</em>, because renegotiating later with money on the table is where teams die.</li>
+    <li><strong>A signed agreement now, before more work goes in.</strong> Even one page: the splits, who decides pricing/discounts/DLC, what happens when someone quits, disappears, or dies, and how a leaver's share gets bought out. Every month without it, the stakes of the eventual argument go up.</li>
+    <li><strong>Define "revenue" precisely.</strong> "We split the money" is not a definition. Split <em>gross</em> (sticker-price sales)? What lands from Valve? What's left after the marketing budget? Those can differ by half. Pick one, write it down, and ban phrases like "fair share" and "we'll figure it out."</li>
+    <li><strong>IP assignment, signed before work continues.</strong> Under copyright law, whoever creates something <em>automatically owns it</em> — the artist owns the art, the composer owns the music, each coder owns their code, even inside a team project. Nothing transfers until each person signs a line assigning their work to the company. Without that signature, one angry member can legally block the whole release or walk away with assets that are baked into the shipped game.</li>
+    <li><strong>Vesting</strong> (or the weekly ledger). Covered above — it's the single best protection against "person quits in month three, still collects forever."</li>
+    <li><strong>Everyone reads the numbers straight from Valve.</strong> A Steamworks account supports multiple logins with permissions — give every member the financial-view permission (Valve calls it <em>View Financials</em> account-wide, or <em>View Financial Info</em> per game: sales and download numbers). Nobody should learn the sales figures from a screenshot one person chose to share. Same idea for the bank account: pick a bank whose app supports view-only access for all members.</li>
+    <li><strong>Name who holds "Actual Authority."</strong> Valve designates exactly one person on the account who can change bank details, tax info, and legal agreements — in other words, one person who could quietly redirect where the money goes. That's fine, it just needs to be <em>chosen on purpose</em> and written into the agreement, along with what they may never do without a vote (anything involving money is a good default).</li>
+    <li><strong>Pay out on a schedule, expenses first.</strong> For example quarterly: money in, minus expenses, minus the agreed <strong>holdback</strong> — a percentage that stays in the account for taxes, refunds, marketing, and post-launch content — then distribute the rest by the signed percentages. Agreeing the holdback number <em>now</em> kills most future arguments.</li>
+    <li><strong>The tax reality nobody warns you about:</strong> with an LLC, members owe income tax on their share of the profit <em>even if the money stays in the company account</em>. The IRS taxes what the company earned, not what it paid out. And because nobody's withholding taxes from a paycheck for you, plan on self-employment tax (~15%) plus regular income tax — earmarking about a third of your share is a sane starting point until the accountant gives you a real number.</li>
+    <li><strong>Record the reasoning, not just the numbers.</strong> Equal splits are fine if everyone agrees — but write down <em>why</em> the split is what it is. Renegotiating later, with real money on the table, is where teams die.</li>
+  </ul>
+
+  <h2>Questions to answer at the next team meeting</h2>
+  <p>The one-page agreement practically writes itself once these have answers:</p>
+  <ul class="honest">
+    <li>Who are the members, and what percent does each get — <em>and why</em>?</li>
+    <li>Fixed-with-vesting or the earned-split ledger? If vesting: over what period, and is there a minimum stay before anything vests?</li>
+    <li>What exactly counts as "revenue" for splitting?</li>
+    <li>What's the holdback percent, and what is it allowed to be spent on?</li>
+    <li>Which decisions need everyone, which need a majority, and which can one person just make? (Pricing? Discounts? Adding a team member?)</li>
+    <li>Who holds Actual Authority on Steamworks, and what can they never do alone?</li>
+    <li>If someone leaves, ghosts for two months, or dies — what happens to their share, and how is it valued?</li>
+    <li>Which state (or country) does the LLC live in, and who's the managing member who handles filings?</li>
   </ul>
 
   <h2>The path from here</h2>
   <ol class="path">
-    <li><strong>Now:</strong> sign a short collaboration agreement — splits (fixed-with-vesting or dynamic), IP assignment, decision rules, exit terms. Template-level is fine to start.</li>
-    <li><strong>When the game is clearly shipping:</strong> form the LLC, get the EIN, open the business bank account.</li>
-    <li><strong>Early, not launch week:</strong> LLC signs Steamworks and pays the $100 — verification takes days, the fee starts a 30-day release clock, and the "coming soon" page needs ≥ 2 weeks (months, realistically) of wishlist time. Add every member as a user with financial visibility; decide who holds Actual Authority.</li>
-    <li><strong>Before release:</strong> 1–2 hours of a games/business attorney on the operating agreement, one hour of an accountant for the K-1 setup. (The "bring a lawyer in at release" instinct was right — this is what they're for, and it's a few hundred dollars, not a retainer.)</li>
-    <li><strong>After launch:</strong> distributions on the agreed schedule, holdback first, everyone watching the same Steamworks dashboard.</li>
+    <li><strong>Now:</strong> answer the questions above and sign a short collaboration agreement — splits, vesting, IP assignment, exit terms. A template is fine to start; signed-but-imperfect beats perfect-but-verbal.</li>
+    <li><strong>When the game is clearly shipping:</strong> file the LLC, get the EIN, open the business bank account.</li>
+    <li><strong>Early, not launch week:</strong> the LLC signs up with Steam and pays the $100. Identity checks take days, the fee starts a 30-day release clock, and the "coming soon" page needs weeks-to-months of wishlist time. Add every member as a Steamworks user with financial visibility; pick who holds Actual Authority.</li>
+    <li><strong>Before release:</strong> pay a games/business attorney for 1–2 hours to review the operating agreement, and an accountant for an hour to set up the K-1s. A few hundred dollars total — the instinct to "bring in a lawyer at release" was right, this is exactly what they're for.</li>
+    <li><strong>After launch:</strong> payouts on the agreed schedule, holdback first, everyone watching the same Steamworks dashboard.</li>
   </ol>
 
   <h2>Reality checks</h2>
-  <p><span class="caveat">If any member is outside the US,</span> a US multi-member LLC gets genuinely painful: the LLC must withhold US tax on foreign members' shares (up to 37% for individuals unless a treaty cuts it) and file extra IRS forms on a calendar. The usual fix: entity in one country, everyone else contracts with it on revenue-share agreements. That's the one case where the professional comes in early, not at release.</p>
-  <p><strong>On building our own store:</strong> that isn't dodging the 30% — it's founding a second company (payment processing, global VAT remittance, fraud, refunds, hosting, and zero built-in audience). The realistic version of "be like Epic" is <strong>publishing on Epic's store too</strong>: self-publishing costs $100/app, Epic's cut is 12%, and since mid-2025 developers keep <strong>100% of the first $1M net revenue per product per year</strong> (resets each January; Unreal projects also get the engine royalty cut from 5% to 3.5% above $1M for day-one EGS releases). itch.io alongside (10% default, adjustable 0–100%) is the other low-effort channel. Multi-store costs little; a storefront of our own is not a launch-week decision.</p>
+  <p><span class="caveat">If any member lives outside the US,</span> a US LLC gets genuinely annoying: the company must hold back US tax from that member's share and send it to the IRS on a schedule — up to 37% for individuals, unless their country's tax treaty with the US lowers it — plus extra annual filings. Not impossible, just the point where "we'll figure it out ourselves" stops being smart. The usual fix: put the company in one country and have members elsewhere sign revenue-share contracts with it. This is the one case where the professional comes in <em>early</em>, not at release.</p>
+  <p><strong>On building our own store:</strong> that isn't dodging Steam's 30% — it's founding a second company (payment processing, sales tax in every country, fraud, refunds, hosting, and zero built-in audience). Epic can run a store because Fortnite pays for it. The realistic version of "be like Epic" is <strong>putting the game on Epic's store too</strong>: self-publishing there costs $100 per game, Epic's cut is 12% instead of 30%, and since mid-2025 they take <strong>0% of your first $1M per game per year</strong> (resets every January; and if the game is built in Unreal, releasing on Epic day-one also trims the separate Unreal engine fee from 5% to 3.5% on earnings above $1M). <a href="https://itch.io">itch.io</a> is the other easy channel — its cut defaults to 10% and is adjustable. Being on several stores costs little; building a store is not a launch-week decision.</p>
+
+  <h2>Jargon decoder</h2>
+  <dl class="glossary">
+    <dt>General partnership</dt>
+    <dd>The structure the law assigns a money-making group that never filed anything. Equal splits, everyone personally liable for everything.</dd>
+    <dt>LLC (Limited Liability Company)</dt>
+    <dd>A cheap legal container that owns the game and the money, so lawsuits hit the company instead of members' personal savings.</dd>
+    <dt>Member</dt>
+    <dd>An owner of an LLC. What shareholders are to a corporation, members are to an LLC.</dd>
+    <dt>Operating agreement</dt>
+    <dd>The rulebook the members sign: percentages, decision rules, vesting, exits. The document that keeps everyone honest.</dd>
+    <dt>EIN</dt>
+    <dd>Employer Identification Number — a free tax ID for the company, like an SSN for the business. Ten minutes on irs.gov.</dd>
+    <dt>Pass-through / K-1</dt>
+    <dd>The LLC pays no income tax itself; profit "passes through" to members, each of whom gets a K-1 slip ("your share was $X") for their personal return.</dd>
+    <dt>1099</dt>
+    <dd>The tax form a business sends someone it paid who isn't an employee. Option A's publisher-person has to send these to everyone.</dd>
+    <dt>W-9 / W-8BEN</dt>
+    <dd>Short forms telling the IRS who you are — W-9 for US people, W-8BEN for everyone else (it also unlocks lower treaty tax rates).</dd>
+    <dt>Withholding</dt>
+    <dd>Tax money taken out before a payment reaches you and sent to the government on your behalf.</dd>
+    <dt>Vesting</dt>
+    <dd>Earning your ownership share over time instead of all at once, so leaving early means keeping only what you earned.</dd>
+    <dt>IP assignment</dt>
+    <dd>A signed transfer of ownership of creative work (code, art, music) from the person who made it to the company. Without it, the creator still owns it.</dd>
+    <dt>Adjusted gross revenue</dt>
+    <dd>Steam's term for sales money after refunds, chargebacks, and sales taxes — the number Valve's 30% comes out of, and the number the $1,000 fee-recoup threshold is measured against.</dd>
+    <dt>Holdback / reserve</dt>
+    <dd>An agreed percentage that stays in the company account (taxes, refunds, marketing, DLC) before anyone gets paid.</dd>
+    <dt>Distribution</dt>
+    <dd>An actual payout from the company to its members, per the signed percentages.</dd>
+    <dt>Actual Authority</dt>
+    <dd>The one Valve-designated person on a Steamworks account who can change banking, tax, and legal details.</dd>
+  </dl>
 
   <footer>
     <p>General information, not legal advice — the operating agreement is the one document worth paying a professional to review.</p>
