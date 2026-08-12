@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="How Steam pays one partner account, which legal structure fits a small game team, and the agreement/vesting/transparency setup that keeps profit splits honest.">
+<title>Shipping on Steam as a Team — Money &amp; Structure</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%AE%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    color-scheme: light dark;
+    --paper: #FAFBF7;
+    --ink: #1E2823;
+    --muted: #5C6B62;
+    --accent: #1F6F50;
+    --warn: #A5522A;
+    --line: #D9E0D8;
+    --card: #F1F4EE;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #151A17;
+      --ink: #E6EBE6;
+      --muted: #93A399;
+      --accent: #58B98E;
+      --warn: #D98B5F;
+      --line: #2A332D;
+      --card: #1C2420;
+    }
+  }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: Charter, 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+    line-height: 1.55;
+    margin: 0;
+    font-size: 1.0625rem;
+  }
+  main {
+    max-width: 44rem;
+    margin: 0 auto;
+    padding: 3rem 1.25rem 4rem;
+  }
+  .mono {
+    font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  }
+  .eyebrow {
+    font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 0.4rem;
+  }
+  h1 {
+    font-size: 2rem;
+    line-height: 1.15;
+    margin: 0 0 0.5rem;
+    text-wrap: balance;
+    letter-spacing: -0.01em;
+  }
+  .dateline {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin: 0 0 2.5rem;
+  }
+  h2 {
+    font-size: 1.3rem;
+    margin: 2.75rem 0 0.75rem;
+    text-wrap: balance;
+    letter-spacing: -0.005em;
+  }
+  p { margin: 0 0 1rem; }
+  a { color: var(--accent); }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  strong { font-weight: 700; }
+
+  .keyfact {
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--accent);
+    background: var(--card);
+    padding: 1rem 1.25rem;
+    margin: 0 0 1rem;
+  }
+  .keyfact p { margin: 0; }
+  .keyfact .src { display: block; margin-top: 0.5rem; font-size: 0.85rem; color: var(--muted); }
+
+  .flow {
+    display: flex;
+    gap: 0;
+    list-style: none;
+    padding: 1rem 0.25rem;
+    margin: 1.25rem 0;
+    overflow-x: auto;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .flow li {
+    flex: 0 0 auto;
+    max-width: 11.5rem;
+    padding: 0 1.1rem;
+    position: relative;
+  }
+  .flow li + li::before {
+    content: "→";
+    position: absolute;
+    left: -0.55rem;
+    top: 0.1rem;
+    color: var(--accent);
+  }
+  .flow .step {
+    font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.8rem;
+    color: var(--accent);
+    display: block;
+  }
+  .flow .what {
+    font-weight: 700;
+    display: block;
+    font-size: 0.95rem;
+    line-height: 1.3;
+  }
+  .flow .note {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--muted);
+    line-height: 1.35;
+    margin-top: 0.2rem;
+  }
+
+  .option {
+    border: 1px solid var(--line);
+    background: var(--card);
+    padding: 1rem 1.25rem;
+    margin: 0 0 0.9rem;
+  }
+  .option h3 { margin: 0 0 0.35rem; font-size: 1.05rem; }
+  .option p { margin: 0; font-size: 0.98rem; }
+  .option .tag {
+    font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .option.recommended { border-left: 4px solid var(--accent); }
+  .option.recommended .tag { color: var(--accent); }
+  .trap { border-left: 4px solid var(--warn); }
+  .trap .tag { color: var(--warn); }
+
+  ul.honest { list-style: none; padding: 0; margin: 0 0 1rem; }
+  ul.honest li {
+    padding: 0 0 0.85rem 1.9rem;
+    position: relative;
+  }
+  ul.honest li::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0.3rem;
+    width: 0.8rem; height: 0.8rem;
+    border: 1.5px solid var(--accent);
+  }
+
+  ol.path { list-style: none; counter-reset: step; padding: 0; margin: 0 0 1rem; }
+  ol.path li {
+    counter-increment: step;
+    padding: 0 0 0.9rem 2.6rem;
+    position: relative;
+  }
+  ol.path li::before {
+    content: counter(step, decimal-leading-zero);
+    font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+    position: absolute;
+    left: 0; top: 0.15rem;
+    font-size: 0.9rem;
+  }
+
+  .caveat { color: var(--warn); font-weight: 700; }
+  footer {
+    margin-top: 3rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--line);
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+  footer p { margin: 0 0 0.5rem; }
+</style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">Team brief · Steam release · rev 2</p>
+  <h1>Splitting the money without losing friends</h1>
+  <p class="dateline">How Steam actually pays, what structure the team needs, and what keeps everyone honest. Researched against Valve's docs and game-law sources, 12 August 2026.</p>
+
+  <div class="keyfact">
+    <p><strong>The fact that shapes everything:</strong> Valve pays each game's revenue to exactly <strong>one</strong> partner account, into a bank account whose holder name <strong>matches the partner's legal identification</strong>. From Valve's docs: payments are "associated one to one with partner and account. Any splits or further payments that need to be made are your responsibility."</p>
+    <span class="src">Sources: <a href="https://partner.steamgames.com/doc/finance/payments_salesreporting/faq">Steamworks Reporting &amp; Payments FAQ</a> · <a href="https://partner.steamgames.com/steamdirect">Steam Direct</a></span>
+  </div>
+  <p>So there is no "Steam splits it for us" option. Whoever signs with Steam receives 100% of the money, and everything after that is contracts between us. That's why the structure question matters.</p>
+
+  <h2>Follow the dollar</h2>
+  <ul class="flow">
+    <li><span class="step mono">01</span><span class="what">Sale on Steam</span><span class="note">Customer pays list price; VAT/sales tax and refunds come out of gross.</span></li>
+    <li><span class="step mono">02</span><span class="what">Valve keeps 30%</span><span class="note">25% on revenue past $10M, 20% past $50M.</span></li>
+    <li><span class="step mono">03</span><span class="what">Monthly payout</span><span class="note">~30 days after month end, once ≥ $100 has accrued.</span></li>
+    <li><span class="step mono">04</span><span class="what">One bank account</span><span class="note">The partner of record — ideally our LLC, not one person.</span></li>
+    <li><span class="step mono">05</span><span class="what">Expenses + reserve</span><span class="note">Marketing, tools, tax holdback, DLC war chest — agreed % first.</span></li>
+    <li><span class="step mono">06</span><span class="what">Distributions</span><span class="note">Paid to members per the operating agreement, on a schedule.</span></li>
+  </ul>
+  <p>Getting on Steam at all: any adult can publish — company <em>or</em> individual. Onboarding is identity verification (a few business days), a tax questionnaire (W-9 for US, W-8BEN for non-US), and banking details. The <a href="https://partner.steamgames.com/steamdirect">Steam Direct fee</a> is $100 per game — non-refundable, recouped once the game passes $1,000 adjusted gross. <strong>Two timing gates people miss:</strong> a mandatory <strong>30-day wait</strong> between paying the fee and your first release, and a "coming soon" store page that must be publicly visible at least <strong>2 weeks</strong> before launch (realistically months, for wishlists).</p>
+
+  <h2>Three ways to structure it</h2>
+  <div class="option trap">
+    <span class="tag">The default trap</span>
+    <h3>Do nothing</h3>
+    <p>A group making profit together with no entity and no paperwork is a <strong>general partnership</strong> by default — no filing needed, a handshake creates it. Every member is personally liable for what any member does, and courts fill the missing terms with statutory defaults: <strong>equal profit shares and equal management authority regardless of who actually did the work</strong>. This is the structure we have today.</p>
+  </div>
+  <div class="option">
+    <span class="tag">Option A · cheapest</span>
+    <h3>One person publishes as an individual</h3>
+    <p>One of us signs with Steam personally; everyone else signs a revenue-share contract with them. Fine for a free or jam game. Downsides: all revenue is that person's taxable income (they then issue 1099s), the Steam account and the game live or die with one human, and every payout is a trust exercise.</p>
+  </div>
+  <div class="option recommended">
+    <span class="tag">Option B · recommended</span>
+    <h3>Multi-member LLC</h3>
+    <p>The LLC signs Steamworks, owns the game, and receives the money. The <strong>operating agreement</strong> is the honesty mechanism: ownership %, vesting, decision rules, exits. Taxes pass through — each member gets a K-1 and pays tax on their share. Cost: roughly $50–$500 state filing plus small annual fees; file in the state where the managing member lives (Delaware buys nothing at our scale). Then an EIN (free, IRS website) and a business bank account.</p>
+  </div>
+  <div class="option">
+    <span class="tag">Option C · skip</span>
+    <h3>Corporation</h3>
+    <p>Only worth the overhead if we're raising investment. We're not. Skip.</p>
+  </div>
+
+  <h2>Fixed split or earned split?</h2>
+  <p>Two workable models — pick one deliberately:</p>
+  <p><strong>Fixed percentages with vesting.</strong> Agree the splits now, but each share is <em>earned</em> monthly or per milestone across the remaining dev period (startups use 4-year/1-year-cliff; game teams usually vest to ship date). Simple to run; renegotiate only if roles change.</p>
+  <p><strong>Dynamic split ("Slicing Pie").</strong> Nobody guesses percentages up front — a ledger tracks contributions (hours × an agreed rate × a risk multiplier; cash counts extra) and the split at any moment is your slice of the ledger, frozen at launch. Fairest when nobody knows who'll end up doing the work; costs real bookkeeping discipline every week.</p>
+
+  <h2>What actually keeps everyone honest</h2>
+  <p>Not the entity itself — the paperwork plus visibility:</p>
+  <ul class="honest">
+    <li><strong>A signed agreement now, before more work goes in.</strong> Even one page: splits, decision rules (pricing, discounts, DLC), what happens when someone leaves, dies, or ghosts, and how a departing share gets bought out.</li>
+    <li><strong>Define "revenue" precisely.</strong> Gross? After Valve's cut? After expenses? Game lawyers call this the one definition that shapes every payment that follows — pin it, and ban vague terms like "fair share."</li>
+    <li><strong>IP assignment, signed before work continues.</strong> IP does not transfer automatically — each contributor owns their own code, art, and music until they assign it to the entity in writing. Without it, any one person can block the release or walk off with assets in the shipped game.</li>
+    <li><strong>Vesting</strong> (or the dynamic ledger above). Someone who bails three months in doesn't keep a full share of a game the rest finished.</li>
+    <li><strong>Everyone reads the numbers at the source.</strong> Steamworks supports multiple user logins with per-permission access — give every member <em>View Financials</em> (partner level) or <em>View Financial Info</em> (per app: sales and download data). Data comes from Valve, not from a screenshot. Same visibility on the business bank account.</li>
+    <li><strong>Name who holds "Actual Authority."</strong> Valve assigns one Steamworks role that alone can touch bank details, tax info, and legal agreements — and admins can only grant permissions they hold themselves. Write into the agreement who holds it and what they may do unilaterally (nothing involving money is a good default).</li>
+    <li><strong>Distributions on a schedule, expenses first.</strong> Quarterly: revenue − expenses − an agreed holdback (taxes, refunds, marketing, post-launch content) → distribute per the agreement. Writing the holdback % down now kills most future arguments.</li>
+    <li><strong>Splits with the reasoning recorded.</strong> Equal is fine if everyone agrees — but write down <em>why</em>, because renegotiating later with money on the table is where teams die.</li>
+  </ul>
+
+  <h2>The path from here</h2>
+  <ol class="path">
+    <li><strong>Now:</strong> sign a short collaboration agreement — splits (fixed-with-vesting or dynamic), IP assignment, decision rules, exit terms. Template-level is fine to start.</li>
+    <li><strong>When the game is clearly shipping:</strong> form the LLC, get the EIN, open the business bank account.</li>
+    <li><strong>Early, not launch week:</strong> LLC signs Steamworks and pays the $100 — verification takes days, the fee starts a 30-day release clock, and the "coming soon" page needs ≥ 2 weeks (months, realistically) of wishlist time. Add every member as a user with financial visibility; decide who holds Actual Authority.</li>
+    <li><strong>Before release:</strong> 1–2 hours of a games/business attorney on the operating agreement, one hour of an accountant for the K-1 setup. (The "bring a lawyer in at release" instinct was right — this is what they're for, and it's a few hundred dollars, not a retainer.)</li>
+    <li><strong>After launch:</strong> distributions on the agreed schedule, holdback first, everyone watching the same Steamworks dashboard.</li>
+  </ol>
+
+  <h2>Reality checks</h2>
+  <p><span class="caveat">If any member is outside the US,</span> a US multi-member LLC gets genuinely painful: the LLC must withhold US tax on foreign members' shares (up to 37% for individuals unless a treaty cuts it) and file extra IRS forms on a calendar. The usual fix: entity in one country, everyone else contracts with it on revenue-share agreements. That's the one case where the professional comes in early, not at release.</p>
+  <p><strong>On building our own store:</strong> that isn't dodging the 30% — it's founding a second company (payment processing, global VAT remittance, fraud, refunds, hosting, and zero built-in audience). The realistic version of "be like Epic" is <strong>publishing on Epic's store too</strong>: self-publishing costs $100/app, Epic's cut is 12%, and since mid-2025 developers keep <strong>100% of the first $1M net revenue per product per year</strong> (resets each January; Unreal projects also get the engine royalty cut from 5% to 3.5% above $1M for day-one EGS releases). itch.io alongside (10% default, adjustable 0–100%) is the other low-effort channel. Multi-store costs little; a storefront of our own is not a launch-week decision.</p>
+
+  <footer>
+    <p>General information, not legal advice — the operating agreement is the one document worth paying a professional to review.</p>
+    <p>Sources: <a href="https://partner.steamgames.com/doc/finance/payments_salesreporting/faq">Steamworks payments FAQ</a> · <a href="https://partner.steamgames.com/steamdirect">Steam Direct</a> · <a href="https://partner.steamgames.com/doc/gettingstarted/managing_users">Steamworks user permissions</a> · <a href="https://steamcommunity.com/groups/steamworks/announcements/detail/1697191267930157838">revenue share tiers</a> · <a href="https://store.epicgames.com/en-US/distribution/revenue-programs/now-on-epic">Epic Games Store distribution</a> · <a href="https://www.gamedeveloper.com/business/itch-io-launches-open-revenue-sharing">itch.io open revenue share</a> · <a href="https://legalmoveslawfirm.com/indie-game-rev-share/">game rev-share agreements (Legal Moves Law)</a> · <a href="https://www.irs.gov/individuals/international-taxpayers/partnership-withholding">IRS partnership withholding</a> · <a href="https://equitymatrix.io/blog/slicing-pie-guide">Slicing Pie guide</a></p>
+  </footer>
+</main>
+</body>
+</html>
