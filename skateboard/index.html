@@ -150,8 +150,28 @@
   <div id="v3d-stage"><canvas id="v3d-canvas"></canvas>
     <div id="v3d-load">loading board…</div>
   </div>
+  <div id="v3d-config">
+    <div class="v3d-row" data-slot="deck">
+      <span class="v3d-cat">DECK</span>
+      <button data-key="street_80" class="on">8.0&quot; STREET</button>
+      <button data-key="street_825">8.25&quot; STREET</button>
+      <button data-key="shaped_887">8.875&quot; 90S SHAPE</button>
+    </div>
+    <div class="v3d-row" data-slot="truck">
+      <span class="v3d-cat">TRUCKS</span>
+      <button data-key="139" class="on">139 RAW</button>
+      <button data-key="144">144 BLACK</button>
+      <button data-key="159">159 PATINA</button>
+    </div>
+    <div class="v3d-row" data-slot="wheel">
+      <span class="v3d-cat">WHEELS</span>
+      <button data-key="street_54" class="on">54MM STREET</button>
+      <button data-key="park_54c">54MM CONICAL</button>
+      <button data-key="cruiser_60">60MM CRUISER</button>
+    </div>
+  </div>
   <div id="v3d-bar">
-    <span class="v3d-hint">drag to spin · scroll to zoom</span>
+    <span class="v3d-hint">drag to spin · scroll to zoom · every part is its own GLB, assembled live at the socket nodes</span>
     <label for="v3d-explode">BREAKDOWN</label>
     <input id="v3d-explode" type="range" min="0" max="100" value="0">
   </div>
@@ -165,12 +185,28 @@
     color: #E6DFCE; font-family: "Courier New", monospace; letter-spacing: 2px;
     text-transform: uppercase; font-size: 13px; pointer-events: none;
   }
+  #v3d-config {
+    display: flex; flex-direction: column; gap: 6px; padding: 10px 0 2px;
+    font-family: "Courier New", monospace;
+  }
+  .v3d-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .v3d-cat {
+    width: 74px; font-size: 11px; letter-spacing: 2px; color: var(--rust);
+    font-weight: bold;
+  }
+  .v3d-row button {
+    font-family: inherit; font-size: 11px; letter-spacing: 1.5px; cursor: pointer;
+    background: transparent; color: var(--ink-soft); border: 2px solid var(--rule);
+    padding: 5px 10px; text-transform: uppercase;
+  }
+  .v3d-row button.on { background: var(--rust); color: #F2EAD8; border-color: var(--rust); }
+  .v3d-row button:hover:not(.on) { color: #E6DFCE; }
   #v3d-bar {
     display: flex; align-items: center; gap: 14px; padding-top: 8px;
     font-family: "Courier New", monospace; font-size: 12px; letter-spacing: 1.5px;
     text-transform: uppercase;
   }
-  .v3d-hint { color: var(--ink-soft); margin-right: auto; }
+  .v3d-hint { color: var(--ink-soft); margin-right: auto; font-size: 10px; }
   #v3d-bar label { color: var(--rust); font-weight: bold; }
   #v3d-explode { width: min(300px, 40vw); accent-color: var(--rust); }
 </style>
@@ -184,6 +220,26 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const FILES = {
+  deck: {
+    street_80: 'parts/sk8_deck_street_80.glb',
+    street_825: 'parts/sk8_deck_street_825.glb',
+    shaped_887: 'parts/sk8_deck_shaped_887.glb',
+  },
+  truck: {
+    '139': 'parts/sk8_truck_139_raw.glb',
+    '144': 'parts/sk8_truck_144_black.glb',
+    '159': 'parts/sk8_truck_159_patina.glb',
+  },
+  wheel: {
+    street_54: 'parts/sk8_wheel_street_54_classic.glb',
+    park_54c: 'parts/sk8_wheel_park_54c_yellowed.glb',
+    cruiser_60: 'parts/sk8_wheel_cruiser_60_smoke.glb',
+  },
+  hardware: { std: 'parts/sk8_hardware_std.glb' },
+};
+const cfg = { deck: 'street_80', truck: '139', wheel: 'street_54' };
 
 const canvas = document.getElementById('v3d-canvas');
 const stage = document.getElementById('v3d-stage');
@@ -232,7 +288,25 @@ ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
 scene.add(ground);
 
-const parts = [];   // {node, base, dir}
+const loader = new GLTFLoader();
+const cache = new Map();          // url -> Promise<glTF scene template>
+function loadPart(url) {
+  if (!cache.has(url)) {
+    cache.set(url, new Promise((res, rej) =>
+      loader.load(url, (g) => res(g.scene), undefined, rej)));
+  }
+  return cache.get(url).then((tpl) => {
+    const inst = tpl.clone(true);
+    inst.traverse((o) => {
+      if (o.name.toLowerCase().includes('colonly')) o.visible = false;
+      if (o.isMesh) o.castShadow = true;
+    });
+    return inst;
+  });
+}
+
+let root = null;                  // current Board group
+const parts = [];                 // {node, base, dir} for the explode slider
 function dirFor(node) {
   const n = node.name.toLowerCase();
   const p = new THREE.Vector3();
@@ -244,39 +318,92 @@ function dirFor(node) {
   return null;
 }
 
-new GLTFLoader().load('sk8_board_assembled.glb', (g) => {
-  const root = g.scene;
-  root.traverse((o) => {
-    if (o.name.toLowerCase().includes('colonly')) o.visible = false;
-    if (o.isMesh) { o.castShadow = true; }
-  });
-  // find the assembly node whose children are the swappable parts
-  let asm = null;
-  root.traverse((o) => { if (!asm && o.name.toLowerCase().includes('board_assembled')) asm = o; });
-  const kids = (asm || root).children;
-  for (const k of kids) {
-    const d = dirFor(k);
-    if (d) parts.push({ node: k, base: k.position.clone(), dir: d });
+function placeAt(part, socket, group) {
+  socket.updateWorldMatrix(true, false);
+  const pos = new THREE.Vector3(), quat = new THREE.Quaternion(), s = new THREE.Vector3();
+  socket.matrixWorld.decompose(pos, quat, s);
+  group.worldToLocal(part.position.copy(pos));
+  part.quaternion.copy(quat);
+  group.add(part);
+}
+
+async function assemble() {
+  loadEl.style.display = 'flex';
+  loadEl.textContent = 'assembling…';
+  const [deckT, truckT, wheelT, hwT] = await Promise.all([
+    loadPart(FILES.deck[cfg.deck]), loadPart(FILES.truck[cfg.truck]),
+    loadPart(FILES.wheel[cfg.wheel]), loadPart(FILES.hardware.std),
+  ]);
+  if (root) scene.remove(root);
+  parts.length = 0;
+  root = new THREE.Group();
+  root.name = 'Board';
+
+  const deck = deckT;
+  deck.name = 'deck';
+  root.add(deck);
+  scene.add(root);            // in-scene so world matrices resolve
+  root.updateWorldMatrix(true, true);
+
+  for (const sockName of ['Socket_TruckFront', 'Socket_TruckRear']) {
+    const sock = deck.getObjectByName(sockName);
+    if (!sock) { console.error('missing ' + sockName); continue; }
+    const end = sockName.endsWith('Front') ? 'front' : 'rear';
+    const truck = truckT.clone(true);
+    truck.name = 'truck_' + end;
+    placeAt(truck, sock, root);
+    const hw = hwT.clone(true);
+    hw.name = 'hardware_' + end;
+    placeAt(hw, sock, root);
+    truck.updateWorldMatrix(true, true);
+    for (const wsName of ['Socket_WheelL', 'Socket_WheelR']) {
+      const ws = truck.getObjectByName(wsName);
+      if (!ws) { console.error('missing ' + wsName); continue; }
+      const wheel = wheelT.clone(true);
+      wheel.name = 'wheel_' + end + wsName.slice(-1).toLowerCase();
+      placeAt(wheel, ws, root);
+    }
   }
+
   // centre horizontally; rest the wheels ON the ground so contact reads
+  root.position.set(0, 0, 0);
+  root.updateWorldMatrix(true, true);
   const bb = new THREE.Box3().setFromObject(root);
   const c = bb.getCenter(new THREE.Vector3());
   root.position.x -= c.x;
   root.position.z -= c.z;
-  root.position.y -= bb.min.y;          // wheel bottoms at y=0 (the floor)
-  controls.target.set(0, (bb.max.y - bb.min.y) * 0.45, 0);
-  scene.add(root);
+  root.position.y -= bb.min.y;
+  root.updateWorldMatrix(true, true);
+  for (const k of root.children) {
+    const d = dirFor(k);
+    if (d) parts.push({ node: k, base: k.position.clone(), dir: d });
+  }
+  applyExplode();
   loadEl.style.display = 'none';
-  window.__scene = scene; window.__parts = parts; window.__root = root;
-}, undefined, (err) => { loadEl.textContent = 'failed to load model'; });
+  window.__scene = scene; window.__parts = parts; window.__root = root; window.__cfg = cfg;
+}
 
-slider.addEventListener('input', () => {
+function applyExplode() {
   const t = slider.value / 100;
-  const e = t * t * (3 - 2 * t);          // smooth
+  const e = t * t * (3 - 2 * t);
   for (const p of parts) {
     p.node.position.copy(p.base).addScaledVector(p.dir, e);
   }
-});
+}
+slider.addEventListener('input', applyExplode);
+
+for (const row of document.querySelectorAll('.v3d-row')) {
+  const slot = row.dataset.slot;
+  row.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('button');
+    if (!btn || cfg[slot] === btn.dataset.key) return;
+    row.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === btn));
+    cfg[slot] = btn.dataset.key;
+    assemble().catch((e) => { loadEl.textContent = 'failed to load part'; console.error(e); });
+  });
+}
+
+assemble().catch((e) => { loadEl.textContent = 'failed to load model'; console.error(e); });
 
 function resize() {
   const w = stage.clientWidth, h = canvas.clientHeight || 520;
@@ -290,6 +417,7 @@ resize();
 
 renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
 </script>
+
 
   <p class="lede">Every board in the game is assembled from swappable parts —
   3 decks, 3 trucks, 3 wheels, plus 5 bottom graphics and 6 grip designs
