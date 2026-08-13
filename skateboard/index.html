@@ -158,7 +158,7 @@
 </section>
 <style>
   #v3d { margin: 26px 0 8px; }
-  #v3d-stage { position: relative; border: 3px solid var(--rule); background: #232019; }
+  #v3d-stage { position: relative; border: 3px solid var(--rule); background: #3d372e; }
   #v3d-canvas { width: 100%; height: 520px; display: block; touch-action: none; }
   #v3d-load {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -198,7 +198,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x232019);
+scene.background = new THREE.Color(0x3d372e);
 const camera = new THREE.PerspectiveCamera(36, 2, 0.05, 50);
 camera.position.set(0.55, 0.34, 0.70);
 
@@ -210,7 +210,10 @@ controls.autoRotateSpeed = 1.2;
 controls.minDistance = 0.45; controls.maxDistance = 3.2;
 canvas.addEventListener('pointerdown', () => { controls.autoRotate = false; }, { once: true });
 
-scene.add(new THREE.HemisphereLight(0xf2ead8, 0x35302a, 1.15));
+scene.add(new THREE.HemisphereLight(0xf2ead8, 0x9c8f7a, 1.25));
+const bounce = new THREE.PointLight(0xfff0dc, 14, 3.0, 2);
+bounce.position.set(0, -0.45, 0.25);
+scene.add(bounce);
 const key = new THREE.DirectionalLight(0xfff3e0, 2.6);
 key.position.set(1.4, 2.2, 1.1);
 key.castShadow = true;
