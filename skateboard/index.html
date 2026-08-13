@@ -210,9 +210,9 @@ controls.autoRotateSpeed = 1.2;
 controls.minDistance = 0.45; controls.maxDistance = 3.2;
 canvas.addEventListener('pointerdown', () => { controls.autoRotate = false; }, { once: true });
 
-scene.add(new THREE.HemisphereLight(0xf2ead8, 0x9c8f7a, 1.25));
-const bounce = new THREE.PointLight(0xfff0dc, 14, 3.0, 2);
-bounce.position.set(0, -0.45, 0.25);
+scene.add(new THREE.HemisphereLight(0xf2ead8, 0x746a5c, 1.2));
+const bounce = new THREE.PointLight(0xfff0dc, 2.6, 2.2, 2);
+bounce.position.set(0, -0.5, 0.3);
 scene.add(bounce);
 const key = new THREE.DirectionalLight(0xfff3e0, 2.6);
 key.position.set(1.4, 2.2, 1.1);
